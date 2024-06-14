@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>Votes in Congress</title>
+		<link rel="stylesheet" href="styles.css"/>
+	</head>
+	<body>
+		<script type="module" src="graph.js"></script>
+		<div id="content">
+			<svg id="chamber"></svg>
+			<div id="member-popup"></div>
+			<div id="vote-summary">
+				<span id="vote-result"></span><br>
+				<span id="yea-count" class="vote-count"></span>
+				<span id="yea-breakdown"></span>
+				<span id="nay-count" class="vote-count"></span>
+				<span id="nay-breakdown"></span><br>
+				<span id="not-voting-label"></span>
+			</div>
+			<div id="rollcalls">
+				<select id="select-chamber">
+					<option value="House">House of Representatives</option>
+					<option value="Senate">Senate</option>
+				</select>
+				<table></table>
+			</div>
+		</div>
+	</body>
+</html>
