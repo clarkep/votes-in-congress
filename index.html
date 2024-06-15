@@ -8,6 +8,10 @@
 	<body>
 		<script type="module" src="graph.js"></script>
 		<div id="content">
+			<select id="select-chamber">
+				<option value="House">House of Representatives</option>
+				<option value="Senate">Senate</option>
+			</select>
 			<svg id="chamber"></svg>
 			<div id="member-popup"></div>
 			<div id="vote-summary">
@@ -19,10 +23,6 @@
 				<span id="not-voting-label"></span>
 			</div>
 			<div id="rollcalls">
-				<select id="select-chamber">
-					<option value="House">House of Representatives</option>
-					<option value="Senate">Senate</option>
-				</select>
 				<table></table>
 			</div>
 		</div>

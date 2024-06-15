@@ -12,6 +12,13 @@ html, body {
   height: 650px;
 }
 
+#select-chamber {
+  position: absolute;
+  height: 25px;
+  top: -26px;
+}
+
+
 #chamber {
     position: absolute;
     left: 0px;
@@ -23,11 +30,12 @@ html, body {
 
 #member-popup {
   visibility: hidden;
+  z-index: 1;
   position: absolute;
   left: 0px;
   top: 0px;
   width: 200px;
-  height: 100px;
+  height: 60px;
   font-size: 0.85rem;
   background-color: #ffffff;
   border: 1px solid black;
@@ -83,7 +91,7 @@ html, body {
 
 #rollcalls table {
   width: 280px;
-  height: 380px;
+  height: 400px;
   border: 2px solid rgb(140 140 140);
   border-collapse: collapse;
   display: block;

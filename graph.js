@@ -1,4 +1,4 @@
-// https://stackoverflow.com/a/14991797/3137916
+// [1] 
 function parseCSV(str) {
     const arr = [];
     let quote = false;
@@ -126,8 +126,8 @@ function chamber_seats(which_chamber) {
             // Spots are ordered by angle, with row as a tie breaker 
             circle.order = Math.floor(theta)*rows.length + i;
             circle.setAttribute("order", circle.order.toString());
-            circle.addEventListener("mouseover", mouseOver);
-            circle.addEventListener("mouseout", mouseOut);
+            // XXX see load_vote
+            circle.setAttribute("icspr", "-1");
             seats.push(circle);
             theta += 180. / (n-1);
         }
@@ -261,6 +261,7 @@ function init_chamber(which_chamber, rollcalls, votes, members) {
 
 function draw_chamber(chamber) {
     var svg = document.querySelector("#chamber");
+    document.addEventListener("mousemove", chamberMouseMove);
     svg.innerHTML = "";
     for (var i=0; i<chamber.seats.length; i++) {
         svg.appendChild(chamber.seats[i]);
@@ -331,7 +332,6 @@ function update_label(rollcall, vote_cmp) {
                   + ", R: " + vote_cmp[200].yea
                   + (vote_cmp[328].yea ? (", O: " + vote_cmp[328].yea) : "</span>") 
                   + ")</small>";
-    console.log(100 / yea_breakdown.textContent.length);
     const nay_breakdown = document.querySelector("#nay-breakdown"); 
     nay_breakdown.innerHTML = "<small> (D: " + vote_cmp[100].nay 
                   + ", R: " + vote_cmp[200].nay
@@ -342,6 +342,8 @@ function update_label(rollcall, vote_cmp) {
 }
 
 function load_vote(chamber, rollnum) {
+    /* TODO: sometimes a congressman is not listed at all on a vote. So,
+       assign ids to every seat based on the time the vote occured */
     console.log("loading vote ", rollnum);
     const chamber_str = chamber.which == HOUSE ? "House" : "Senate";
     var i=0;
@@ -350,7 +352,7 @@ function load_vote(chamber, rollnum) {
     var vote_cmp = { 200: { yea: 0, nay: 0, skip: 0 },
                  100: { yea: 0, nay: 0, skip: 0 },
                  328: { yea: 0, nay: 0, skip: 0 }};
-    while(n < 1000 && i < chamber.votes.length) {
+    while(n < chamber.seats.length && i < chamber.votes.length) {
         if (chamber.votes[i][2] == rollnum) {
             var vote = chamber.votes[i];
             var icspr = Math.round(vote[3]).toString();
@@ -408,24 +410,43 @@ var st = {
     selected: null,
     house_vote: 2,
     senate_vote: 2,
+    over_seat: null,
+    over_seat_selected_t: null,
 };
 
-function mouseOver(event) {
-    event.target.setAttribute("stroke-width", "3");
-    const icspr = event.target.getAttribute("icspr");
-    const member = st.selected.members[icspr];
-    console.log(st.selected.members[icspr].member);
-    const popup = document.querySelector("#member-popup");
-    popup.style.visibility = "visible";
-    popup.style.top = Math.round(Number(event.target.getAttribute("cy"))-100)+"px";
-    popup.style.left = Math.round(Number(event.target.getAttribute("cx"))+5)+"px";
-    popup.innerHTML = member.member[9];
+function dist(x1, y1, x2, y2) {
+    return ((x2-x1)**2 + (y2-y1)**2)**0.5;
 }
 
-function mouseOut(event) {
-    event.target.setAttribute("stroke-width", "1");
-    const popup = document.querySelector("#member-popup");
-    popup.style.visibility = "hidden";
+function chamberMouseMove(event) {
+    const elem = document.elementFromPoint(event.clientX, event.clientY);
+    if (elem.tagName === "circle") {
+        const no_hit_r = 2;
+        if (!(elem == st.over_seat)
+            && dist(Number(elem.getAttribute("cx")), Number(elem.getAttribute("cy")),
+                    event.layerX, event.layerY)<(Number(elem.getAttribute("r"))-no_hit_r)) {
+            const popup = document.querySelector("#member-popup");
+            popup.style.visibility = "visible";
+            popup.style.top = Math.round(event.layerY-popup.clientHeight)+"px";
+            popup.style.left = Math.round(event.layerX)+"px";
+            const icspr = elem.getAttribute("icspr");
+            const member = st.selected.members[icspr];
+            if (!member) { // XXX see load_vote
+                popup.innerHTML = "Unknown member";
+            } else {
+                popup.innerHTML = member.member[9];
+            }
+            st.over_seat = elem;
+            st.over_seat_selected_t = Date.now();
+        }
+    } else if (elem.id !=="member-popup") {
+        if (st.over_seat) {
+            st.over_seat.setAttribute("stroke-width", "1");
+            st.over_seat = null;
+            const popup = document.querySelector("#member-popup");
+            popup.style.visibility = "hidden";
+        }
+    }
 }
 
 function voteClicked(event) {
@@ -476,3 +497,16 @@ const votesPromise = fetch("HS117_votes.csv").then(response => response.text());
 const membersPromise = fetch("HS117_members.csv").then(response => response.text());
 
 Promise.all([rollcallsPromise, votesPromise, membersPromise]).then(values => main(...values));
+
+// prevent double click from annoyingly selecting text[2]
+document.addEventListener('mousedown', function(event) {
+  if (event.detail > 1) {
+    event.preventDefault();
+  }
+}, false);
+
+/* 
+Refs:
+[1] https://stackoverflow.com/a/14991797/3137916
+[2] https://stackoverflow.com/questions/880512/prevent-text-selection-after-double-click
+*/
