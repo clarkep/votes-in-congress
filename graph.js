@@ -97,20 +97,22 @@ function filter_chamber(table, which_chamber) {
 // Returns: sorted array of svg elements
 function chamber_seats(which_chamber) {
     var svg = document.querySelector("#chamber");
+    svg.setAttribute("viewBox", "0 0 800 450");
     const svgWidth = svg.width.baseVal.value;
     const svgHeight = svg.height.baseVal.value;
-    // My: coordinates such that y is up. Transformed with svgHeight-My 
-    const origin_x = svgWidth / 2; const origin_My = 30; 
-    var r = origin_x - 240;
     if (which_chamber == HOUSE) {
         var rows = [ 22, 25, 31, 34, 38, 41, 43, 45, 47, 53, 56];
         var c_r = 8;
         var d_r = 21;
+        var r = 160;
     } else {
-        var rows = [ 13, 14, 16, 17, 19, 21 ];
-        c_r = 12;
+        var rows = [ 16, 18, 20, 22, 24 ];
+        c_r = 14;
         var d_r = 40;
+        var r = 190;
     }
+    // My: coordinates such that y is up. Transformed with svgHeight-My
+    const origin_x = svgWidth / 2; const origin_My = 22 + c_r;
     var seats = [];
     for (var i=0; i<rows.length; i++) {
         var theta = 0;
@@ -318,6 +320,16 @@ function voteview_url(rollcall) {
 
 }
 
+function reposition_label(event) {
+    // reposition
+    const all = document.querySelector("#vote-summary");
+    const w = all.clientWidth;
+    const svg_w = st.chamber_svg.width.baseVal.value;
+    const svg_h = st.chamber_svg.height.baseVal.value;
+    all.style.top = (0.80 * svg_h).toString() + "px";
+    all.style.left = (0.5 * svg_w - 0.5*w).toString() + "px";
+}
+
 function update_label(rollcall, vote_cmp) {
     const count = document.querySelector("#vote-result");
     const result_str = (Number(rollcall[6]) > Number(rollcall[7])) ? "Passed" : "Failed";
@@ -339,6 +351,7 @@ function update_label(rollcall, vote_cmp) {
                   + ")</small>";
     const not_voting_label = document.querySelector("#not-voting-label");
     not_voting_label.innerHTML = "Not Voting: " + (vote_cmp[100].skip + vote_cmp[200].skip + vote_cmp[328].skip);
+    reposition_label(null);
 }
 
 function load_vote(chamber, rollnum) {
@@ -385,8 +398,7 @@ function load_vote(chamber, rollnum) {
 
 function rollcall_table(rollcalls, which_chamber) {
     const chamber_str = which_chamber === HOUSE ? "House" : "Senate";
-    console.log(chamber_str);
-    const tbl = document.querySelector("#rollcalls table");
+    const tbl = document.querySelector("#rollcalls");
     tbl.innerHTML = "";
     for (var i=1; i<rollcalls.length; i++) {
         var row = rollcalls[i];
@@ -403,6 +415,7 @@ function rollcall_table(rollcalls, which_chamber) {
 }
 
 var st = { 
+    chamber_svg: null,
     rollcalls: null,
     votes: null,
     house: null,
@@ -418,13 +431,24 @@ function dist(x1, y1, x2, y2) {
     return ((x2-x1)**2 + (y2-y1)**2)**0.5;
 }
 
+function fromSVGcoords(x, y)
+{
+    const svg_w = 800;
+    const svg_h = 450;
+    const x_scale = st.chamber_svg.width.baseVal.value / svg_w;
+    const y_scale = st.chamber_svg.height.baseVal.value / svg_h;
+    return [x*x_scale, y*y_scale]
+}
+
 function chamberMouseMove(event) {
     const elem = document.elementFromPoint(event.clientX, event.clientY);
     if (elem.tagName === "circle") {
+        var elem_x, elem_y;
+        [ elem_x, elem_y ] = fromSVGcoords(elem.cx.baseVal.value, elem.cy.baseVal.value);
         const no_hit_r = 2;
         if (!(elem == st.over_seat)
-            && dist(Number(elem.getAttribute("cx")), Number(elem.getAttribute("cy")),
-                    event.layerX, event.layerY)<(Number(elem.getAttribute("r"))-no_hit_r)) {
+            && dist(elem_x, elem_y, event.layerX, event.layerY)
+            <(Number(elem.getAttribute("r"))-no_hit_r)) {
             const popup = document.querySelector("#member-popup");
             popup.style.visibility = "visible";
             popup.style.top = Math.round(event.layerY-popup.clientHeight)+"px";
@@ -450,14 +474,8 @@ function chamberMouseMove(event) {
 }
 
 function voteClicked(event) {
-    console.log("voteClicked");
-    var button;
     // XXX
-    if (event.target.matches("button")) {
-        button = event.target;
-    } else if (event.target.matches("span")) {
-        button = event.target.parentNode;
-    } 
+    const button = event.currentTarget;
     reset_vote(st.selected);
     var vote_n = Number(button.getAttribute("vote-number"));
     st.selected.vote = vote_n;
@@ -480,6 +498,7 @@ function main(rollcalls_str, votes_str, members_str) {
     st.votes = votes;
     const members = parseCSV(members_str);
 
+    st.chamber_svg = document.querySelector("#chamber");
     st.house = init_chamber(HOUSE, rollcalls, votes, members);
     st.senate = init_chamber(SENATE, rollcalls, votes, members);
     st.selected = st.house;
@@ -490,6 +509,7 @@ function main(rollcalls_str, votes_str, members_str) {
     select_chamber.addEventListener("change", chamberSelected);
 
     load_vote(st.selected, st.selected.vote, votes, rollcalls);
+    window.onresize = reposition_label;
 }
 
 const rollcallsPromise = fetch("HS117_rollcalls.csv").then(response => response.text());
@@ -499,11 +519,12 @@ const membersPromise = fetch("HS117_members.csv").then(response => response.text
 Promise.all([rollcallsPromise, votesPromise, membersPromise]).then(values => main(...values));
 
 // prevent double click from annoyingly selecting text[2]
-document.addEventListener('mousedown', function(event) {
+document.addEventListener("mousedown", function(event) {
   if (event.detail > 1) {
     event.preventDefault();
   }
 }, false);
+
 
 /* 
 Refs:
