@@ -81,8 +81,8 @@ function filter_chamber(table, which_chamber) {
 function chamber_seats(which_chamber) {
     var svg = document.querySelector("#chamber");
     svg.setAttribute("viewBox", "0 0 800 450");
-    const svgWidth = svg.width.baseVal.value;
-    const svgHeight = svg.height.baseVal.value;
+    const svgWidth = 800;
+    const svgHeight = 450;
     if (which_chamber == HOUSE) {
         var rows = [ 22, 25, 31, 34, 38, 41, 43, 45, 47, 53, 56];
         var c_r = 8;
@@ -260,6 +260,38 @@ function reset_vote(chamber) {
     }
 }
 
+function reposition_label(event) {
+    const all = document.querySelector("#vote-summary");
+    const normal_w = 800;
+    const normal_size = 0.85;
+    const svg_w = st.chamber_svg.width.baseVal.value;
+    all.style.fontSize = (normal_size * (svg_w/normal_w)).toString() + "rem";
+    // XXX get the new width given updated fontSize
+    const w = all.clientWidth;
+    const svg_h = st.chamber_svg.height.baseVal.value;
+    all.style.top = (0.80 * svg_h).toString() + "px";
+    all.style.left = (0.5 * svg_w - 0.5*w).toString() + "px";
+}
+
+function result_short(result) {
+    if (result.slice(-9)==="Agreed to") {
+        return "Agreed to";
+    } else if (result.slice(-8)==="Rejected") {
+        return "Rejected";
+    } else if (result.slice(-6)==="Passed") {
+        return "Passed";
+    } else if (result.slice(-8)==="Defeated") {
+        return "Defeated";
+    } else if (result.slice(-9)==="Confirmed") {
+        return "Confirmed";
+    } else if (result.slice(-13)==="Not Sustained") {
+        return "Not Sustained";
+    } else if (result.slice(-9)==="Sustained") {
+        return "Sustained";
+    }
+    return null;
+}
+
 const vote_codes = {
     0: "not_member", // Not a member when vote was taken
     1: "yea", // Yea
@@ -275,81 +307,90 @@ const vote_codes = {
 };
 
 const vote_colors = {
-    200: {  // Republican
-        not_member: "#ffffff", // error
-        yea: "#ff0030",
-        nay: "#ffd8e9",
-        skip: "#888888"
+    yea: {
+        200: "#ff0030",
+        100: "#4000ff",
+        328: "#40ff00",
     },
-    100: { // Democratic
-        not_member: "#ffffff",
-        yea: "#4000ff",
-        nay: "#d3deff",
-        skip: "#888888",
+    nay: {
+        200: "#ffd8e9",
+        100: "#d3deff",
+        328: "#d3ffde",
+
     },
-    328: { // Independent/Other
-        not_member: "#ffffff",
-        yea: "#40ff00",
-        nay: "#d3ffde",
-        skip: "#888888",
-    }
+    skip: {
+        200: "#888888",
+        100: "#888888",
+        328: "#888888",
+    },
 };
 
-const party_names_short = {
-    200: "Rep",
-    100: "Dem",
-    328: "Other",
-};
-
-function voteview_url(rollcall) {
-
-}
-
-function reposition_label(event) {
-    const all = document.querySelector("#vote-summary");
-    const normal_w = 800;
-    const normal_size = 0.85;
-    const svg_w = st.chamber_svg.width.baseVal.value;
-    all.style.fontSize = (normal_size * (svg_w/normal_w)).toString() + "rem";
-    // XXX get the new width given updated fontSize 
-    const w = all.clientWidth;
-    const svg_h = st.chamber_svg.height.baseVal.value;
-    all.style.top = (0.80 * svg_h).toString() + "px";
-    all.style.left = (0.5 * svg_w - 0.5*w).toString() + "px";
+const party_short = {
+    100: "D",
+    200: "R",
+    328: "I",
 }
 
 function update_label(rollcall, vote_cmp) {
     const count = document.querySelector("#vote-result");
-    const result_str = rollcall[14];
+    var result_str = result_short(rollcall[14]);
+    result_str = result_str ? result_str : rollcall[14];
     const result = document.querySelector("#vote-result");
     result.innerHTML = result_str;
     const yea_count = document.querySelector("#yea-count");
     yea_count.innerHTML = rollcall[6];
     const nay_count = document.querySelector("#nay-count");
     nay_count.innerHTML = rollcall[7];
+
+    var yeas = Object.entries(vote_cmp.yea);
+    var yea_text;
+    if (yeas.length) {
+        yeas.sort((e1, e2)=>(e2[1] - e1[1]));
+        yea_text = "<small>("
+        for (let i=0; i<yeas.length; i++) {
+            let e = yeas[i];
+            yea_text += party_short[e[0]] + ": " + e[1] + ", ";
+        }
+        yea_text = yea_text.slice(0, -2) + ")</small>";
+    } else {
+        yea_text = "";
+    }
     const yea_breakdown = document.querySelector("#yea-breakdown");
-    yea_breakdown.innerHTML = "<small> (D: " + vote_cmp[100].yea 
-                  + ", R: " + vote_cmp[200].yea
-                  + (vote_cmp[328].yea ? (", O: " + vote_cmp[328].yea) : "</span>") 
-                  + ")</small>";
-    const nay_breakdown = document.querySelector("#nay-breakdown"); 
-    nay_breakdown.innerHTML = "<small> (D: " + vote_cmp[100].nay 
-                  + ", R: " + vote_cmp[200].nay
-                  + (vote_cmp[328].nay ? (", O: " + vote_cmp[328].nay) : "</span>") 
-                  + ")</small>";
+    yea_breakdown.innerHTML = yea_text;
+
+    var nays = Object.entries(vote_cmp.nay);
+    var nay_text;
+    if (nays.length) {
+        nays.sort((e1, e2)=>(e2[1] - e1[1]));
+        nay_text = "<small>("
+        for (let i=0; i<nays.length; i++) {
+            let e = nays[i];
+            nay_text += party_short[e[0]] + ": " + e[1] + ", ";
+        }
+        nay_text = nay_text.slice(0, -2) + ")</small>";
+    } else {
+        nay_text = "";
+    }
+    const nay_breakdown = document.querySelector("#nay-breakdown");
+    nay_breakdown.innerHTML = nay_text;
+
+    const n_not_voting = Object.entries(vote_cmp.skip).reduce((acc, e)=>acc+Number(e[1]), 0);
     const not_voting_label = document.querySelector("#not-voting-label");
-    not_voting_label.innerHTML = "Not Voting: " + (vote_cmp[100].skip + vote_cmp[200].skip + vote_cmp[328].skip);
+    not_voting_label.innerHTML = "Not Voting: " + n_not_voting;
+
     reposition_label(null);
 }
 
 function load_vote(chamber, rollnum) {
     /* 
-       Sometimes a member is not listed at all on a vote, so we
-       assign ids to every seat based on the time the vote occured. However,
-       I still don't have definitive data on when people came in to office, so
-       if a member missed the *first few* or *last few* votes of their term, they
-       are listed as "unknown member". This also means we have to loop through 
-       votes, members, and seats here. 
+       Sometimes a member is not listed at all on a vote, so we assign ids to
+       every seat based on members' first and last votes(I still don't have
+       their definitive start and end dates). However, if a member missed the
+       *first few* or *last few* votes of their term, they can't be found and
+       their seat will be listed as "unknown member".
+  
+       All of this means we have to loop through votes, members, and seats here
+       to get all the information we need.
     */
     console.log("loading vote ", rollnum);
     const chamber_str = chamber.which == HOUSE ? "House" : "Senate";
@@ -370,10 +411,8 @@ function load_vote(chamber, rollnum) {
             icspr_votes[icspr] = vote[4];
         }
     }
+    var vote_cmp = { yea: { }, nay: { }, skip: { }};
     // Find members who were in office for this vote but might not be explicitly listed
-    var vote_cmp = { 200: { yea: 0, nay: 0, skip: 0 },
-                 100: { yea: 0, nay: 0, skip: 0 },
-                 328: { yea: 0, nay: 0, skip: 0 }};
     for(const [icspr, member] of Object.entries(chamber.members)) {
         if (rollnum < member.member[22]|| rollnum > member.member[23]) {
             // presumably not in office at the time of the vote
@@ -383,8 +422,12 @@ function load_vote(chamber, rollnum) {
         if (seat) {
             var party_code = member.member[6] 
             var vote_code = icspr_votes[icspr] ? vote_codes[icspr_votes[icspr]] : vote_codes[100];
-            var fill = vote_colors[party_code][vote_code];
-            vote_cmp[party_code][vote_code] += 1;
+            var fill = vote_colors[vote_code][party_code];
+            if (vote_cmp[vote_code][party_code]) {
+                vote_cmp[vote_code][party_code] += 1;
+            } else {
+                vote_cmp[vote_code][party_code] = 1;
+            }
             seat.setAttribute("fill", fill);
             seat.setAttribute("icspr", icspr);
         } else {
@@ -394,7 +437,11 @@ function load_vote(chamber, rollnum) {
     // Find seats that are still unaccounted for after step 2
     for (var i=0; i<chamber.seats.length; i++) {
         if (!chamber.members[chamber.seats[i].getAttribute("icspr")]) { // unknown member
-            vote_cmp[328]["skip"] += 1;
+            if (vote_cmp.skip[328]) {
+                vote_cmp.skip[328] += 1;
+            } else {
+                vote_cmp.skip[328] = 1;
+            }
         }
     }
     const rc = chamber.rollcalls[rollnum-1];
@@ -439,6 +486,15 @@ var st = {
 
 function dist(x1, y1, x2, y2) {
     return ((x2-x1)**2 + (y2-y1)**2)**0.5;
+}
+
+function chamberSelected(event) {
+    var chamber = event.target.value=="House" ? st.house : st.senate;
+    console.log(chamber.which);
+    st.selected = chamber;
+    draw_chamber(chamber);
+    rollcall_table(st.rollcalls, chamber.which);
+    load_vote(chamber, chamber.vote);
 }
 
 function fromSVGcoords(x, y)
@@ -532,15 +588,6 @@ function voteClicked(event) {
     st.cur_button = button;
     load_vote(st.selected, vote_n);
     expand_button(button, vote_n);
-}
-
-function chamberSelected(event) {
-    var chamber = event.target.value=="House" ? st.house : st.senate;
-    console.log(chamber.which);
-    st.selected = chamber;
-    draw_chamber(chamber);
-    rollcall_table(st.rollcalls, chamber.which);
-    load_vote(chamber, chamber.vote);
 }
 
 function main(rollcalls_str, votes_str, members_str) {
