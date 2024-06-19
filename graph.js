@@ -48,32 +48,15 @@ function array_matches(array, f)
     return result;
 }
 
-// TODO: make faster! If I can find start and end dates for legislators,
-// this won't be necessary. Otherwise, pre-compute first vote and last vote
-// for members and see if they overlap. 
-function voted_together(ic1, ic2) {
-    var ic1_voted = false;
-    var ic2_voted = false;
-    var current_roll_n = 0;
-    for (var i=0; i<st.votes.length; i++) {
-        // assume votes are in order
-        var vote = st.votes[i];
-        var vote_ic = Math.round(vote[3]).toString();
-        if (current_roll_n != vote[2]) {
-            ic1_voted = false;
-            ic2_voted = false;
-            current_roll_n = vote[2];
-        }
-        if (vote_ic == ic1) {
-            ic1_voted = true;
-        } else if (vote_ic == ic2) {
-            ic2_voted = true;
-        }
-        if (ic1_voted && ic2_voted) {
-            return true;
-        }
+/* We ignore the possibility that a member leaves office and comes back in
+   in the same 2 year Congress */
+function served_together(member_row1, member_row2) {
+    if (Number(member_row1[23]) < Number(member_row2[22])) {
+        return false;
+    } else if (Number(member_row1[22]) >= Number(member_row2[23])) {
+        return false;
     }
-    return false;
+    return true;
 }
 
 const HOUSE = 0;
@@ -218,7 +201,7 @@ function senate_members(members, chamber_seats) {
                 if (result[state[j]].seat) {
                     continue;
                 }
-                if (!seat_group.some((ic) => voted_together(ic, state[j]))) {
+                if (!seat_group.some((ic) => served_together(result[ic].member, result[state[j]].member))) {
                     console.log("sharing a seat: ", cur, result[cur].member[9], state[j], result[state[j]].member[9]);
                     result[state[j]].seat = chamber_seats[seat_i];
                     seat_group.push(state[j]);
@@ -272,6 +255,7 @@ function draw_chamber(chamber) {
 
 function reset_vote(chamber) {
     for (var i=0; i<chamber.seats.length; i++) {
+        chamber.seats[i].setAttribute("icspr", "-1");
         chamber.seats[i].setAttribute("fill", "#888888");
     }
 }
@@ -287,6 +271,7 @@ const vote_codes = {
     7: "skip", // Present (some Congreses)
     8: "skip", // Present (some Congresses)
     9: "skip", // Not Voting(Abstention)
+    100: "skip" // No entry in vote database
 };
 
 const vote_colors = {
@@ -321,10 +306,13 @@ function voteview_url(rollcall) {
 }
 
 function reposition_label(event) {
-    // reposition
     const all = document.querySelector("#vote-summary");
-    const w = all.clientWidth;
+    const normal_w = 800;
+    const normal_size = 0.85;
     const svg_w = st.chamber_svg.width.baseVal.value;
+    all.style.fontSize = (normal_size * (svg_w/normal_w)).toString() + "rem";
+    // XXX get the new width given updated fontSize 
+    const w = all.clientWidth;
     const svg_h = st.chamber_svg.height.baseVal.value;
     all.style.top = (0.80 * svg_h).toString() + "px";
     all.style.left = (0.5 * svg_w - 0.5*w).toString() + "px";
@@ -332,7 +320,7 @@ function reposition_label(event) {
 
 function update_label(rollcall, vote_cmp) {
     const count = document.querySelector("#vote-result");
-    const result_str = (Number(rollcall[6]) > Number(rollcall[7])) ? "Passed" : "Failed";
+    const result_str = rollcall[14];
     const result = document.querySelector("#vote-result");
     result.innerHTML = result_str;
     const yea_count = document.querySelector("#yea-count");
@@ -355,21 +343,23 @@ function update_label(rollcall, vote_cmp) {
 }
 
 function load_vote(chamber, rollnum) {
-    /* TODO: sometimes a congressman is not listed at all on a vote. So,
-       assign ids to every seat based on the time the vote occured */
+    /* 
+       Sometimes a member is not listed at all on a vote, so we
+       assign ids to every seat based on the time the vote occured. However,
+       I still don't have definitive data on when people came in to office, so
+       if a member missed the *first few* or *last few* votes of their term, they
+       are listed as "unknown member". This also means we have to loop through 
+       votes, members, and seats here. 
+    */
     console.log("loading vote ", rollnum);
     const chamber_str = chamber.which == HOUSE ? "House" : "Senate";
-    var i=0;
-    var n=0;
-    var misses = 0;
-    var vote_cmp = { 200: { yea: 0, nay: 0, skip: 0 },
-                 100: { yea: 0, nay: 0, skip: 0 },
-                 328: { yea: 0, nay: 0, skip: 0 }};
-    while(n < chamber.seats.length && i < chamber.votes.length) {
+    var icspr_votes = {};
+    // Collect all the explicitly listed votes
+    for (var i=0; i< chamber.votes.length; i++) {
         if (chamber.votes[i][2] == rollnum) {
             var vote = chamber.votes[i];
             var icspr = Math.round(vote[3]).toString();
-            var member = chamber.members[icspr];
+            var member = chamber.members[icspr]
             if (!member) {
                 // Sometimes a president's vote is listed as a vote 
                 // in one of the chambers.
@@ -377,24 +367,40 @@ function load_vote(chamber, rollnum) {
                 i += 1;
                 continue;
             }
-            var seat = member.seat;
-            if (seat) {
-                var party_code = member.member[6] 
-                var vote_code = vote_codes[vote[4]];
-                var fill = vote_colors[party_code][vote_code];
-                vote_cmp[party_code][vote_code] += 1;
-                seat.setAttribute("fill", fill);
-                seat.setAttribute("icspr", icspr);
-            } else {
-                misses += 1;
-            }
-            n++;
+            icspr_votes[icspr] = vote[4];
         }
-        i++;
+    }
+    // Find members who were in office for this vote but might not be explicitly listed
+    var vote_cmp = { 200: { yea: 0, nay: 0, skip: 0 },
+                 100: { yea: 0, nay: 0, skip: 0 },
+                 328: { yea: 0, nay: 0, skip: 0 }};
+    for(const [icspr, member] of Object.entries(chamber.members)) {
+        if (rollnum < member.member[22]|| rollnum > member.member[23]) {
+            // presumably not in office at the time of the vote
+            continue;
+        }
+        var seat = member.seat;
+        if (seat) {
+            var party_code = member.member[6] 
+            var vote_code = icspr_votes[icspr] ? vote_codes[icspr_votes[icspr]] : vote_codes[100];
+            var fill = vote_colors[party_code][vote_code];
+            vote_cmp[party_code][vote_code] += 1;
+            seat.setAttribute("fill", fill);
+            seat.setAttribute("icspr", icspr);
+        } else {
+            misses += 1;
+        }
+    }
+    // Find seats that are still unaccounted for after step 2
+    for (var i=0; i<chamber.seats.length; i++) {
+        if (!chamber.members[chamber.seats[i].getAttribute("icspr")]) { // unknown member
+            vote_cmp[328]["skip"] += 1;
+        }
     }
     const rc = chamber.rollcalls[rollnum-1];
     update_label(rc, vote_cmp); 
 }
+
 
 function rollcall_table(rollcalls, which_chamber) {
     const chamber_str = which_chamber === HOUSE ? "House" : "Senate";
@@ -402,14 +408,17 @@ function rollcall_table(rollcalls, which_chamber) {
     tbl.innerHTML = "";
     for (var i=1; i<rollcalls.length; i++) {
         var row = rollcalls[i];
-        if (row[1]===chamber_str && row[15].trim().length) {
+        if (row[1]===chamber_str) {
             var tr = tbl.appendChild(document.createElement("tr"));
             // var td = tr.appendChild(document.createElement("td"));
-            var button = tr.appendChild(document.createElement("button"));
+            var button = tr.appendChild(document.createElement("div"));
             button.setAttribute("class", "vote-button");
             button.setAttribute("vote-number", row[2].toString());
             button.addEventListener("click", voteClicked);
-            button.innerHTML = row[2].toString() + ". " + row[15].trim() + " <span style='color: #666666;'><br>" + row[16] + "</span>";
+            button.innerHTML = row[2].toString() + ". "
+                               + (row[13].trim().length ?  "<span style='color: black;'>" + row[13].trim() + "</span><br>" : "")
+                               + (row[15].trim().length ? row[15].trim() + "<br>" : "" )
+                               + " <span style='color: #666666;'>" + row[16] + "</span>";
         }
     }
 }
@@ -425,6 +434,7 @@ var st = {
     senate_vote: 2,
     over_seat: null,
     over_seat_selected_t: null,
+    cur_button: null,
 };
 
 function dist(x1, y1, x2, y2) {
@@ -473,13 +483,55 @@ function chamberMouseMove(event) {
     }
 }
 
+function expand_button(button, vote_n) {
+    var h = button.clientHeight;
+    console.log(h);
+    button.parentElement.style.borderWidth = "2px";
+    button.parentElement.style.borderColor = "black";
+    button.style.height = (h + 30).toString() + "px";
+    button.style.backgroundColor = "#ffffff";
+    button.style.userSelect = "auto";
+    // const table = document.querySelector("#rollcalls");
+    // table.scrollTo(0, button.offsetTop);
+    const row = st.selected.rollcalls[vote_n - 1];
+    const voteview = document.createElement("a");
+    const vote_code = "R" 
+                      + (st.selected.which===HOUSE ? "H"  : "S")
+                      + "117"
+                      + ("000" + row[2]).slice(-4);
+    const url = "https://voteview.com/rollcall/" + vote_code;
+    voteview.setAttribute("href", url);
+    voteview.setAttribute("class", "voteview-link");
+    voteview.innerHTML = "voteview>"
+    button.appendChild(voteview);
+}
+
+function unexpand_button(button) {
+    button.parentElement.style.borderWidth = "";
+    button.parentElement.style.borderColor = "";
+    button.style.height = "";
+    button.style.backgroundColor = "";
+    button.style.userSelect = "";
+    const vote_n = Number(button.getAttribute("vote-number"));
+    const row = st.selected.rollcalls[vote_n - 1];
+    button.innerHTML = row[2].toString() + ". "
+                        + (row[13].trim().length ?  "<span style='color: black;'>" + row[13].trim() + "</span><br>" : "")
+                        + (row[15].trim().length ? row[15].trim() + "<br>" : "" )
+                        + " <span style='color: #666666;'>" + row[16] + "</span>";
+
+}
+
 function voteClicked(event) {
-    // XXX
     const button = event.currentTarget;
     reset_vote(st.selected);
+    if (st.cur_button) {
+        unexpand_button(st.cur_button);
+    }
     var vote_n = Number(button.getAttribute("vote-number"));
     st.selected.vote = vote_n;
-    load_vote(st.selected, vote_n, st.votes, st.rollcalls);
+    st.cur_button = button;
+    load_vote(st.selected, vote_n);
+    expand_button(button, vote_n);
 }
 
 function chamberSelected(event) {
@@ -488,7 +540,7 @@ function chamberSelected(event) {
     st.selected = chamber;
     draw_chamber(chamber);
     rollcall_table(st.rollcalls, chamber.which);
-    load_vote(chamber, chamber.vote, st.votes, st.rollcalls);
+    load_vote(chamber, chamber.vote);
 }
 
 function main(rollcalls_str, votes_str, members_str) {
@@ -508,17 +560,17 @@ function main(rollcalls_str, votes_str, members_str) {
     const select_chamber = document.querySelector("#select-chamber");
     select_chamber.addEventListener("change", chamberSelected);
 
-    load_vote(st.selected, st.selected.vote, votes, rollcalls);
+    load_vote(st.selected, st.selected.vote);
     window.onresize = reposition_label;
 }
 
 const rollcallsPromise = fetch("HS117_rollcalls.csv").then(response => response.text());
 const votesPromise = fetch("HS117_votes.csv").then(response => response.text());
-const membersPromise = fetch("HS117_members.csv").then(response => response.text());
+const membersPromise = fetch("HS117_members_v2.csv").then(response => response.text());
 
 Promise.all([rollcallsPromise, votesPromise, membersPromise]).then(values => main(...values));
 
-// prevent double click from annoyingly selecting text[2]
+// prevent double click from annoyingly selecting text
 document.addEventListener("mousedown", function(event) {
   if (event.detail > 1) {
     event.preventDefault();
@@ -529,5 +581,4 @@ document.addEventListener("mousedown", function(event) {
 /* 
 Refs:
 [1] https://stackoverflow.com/a/14991797/3137916
-[2] https://stackoverflow.com/questions/880512/prevent-text-selection-after-double-click
 */
