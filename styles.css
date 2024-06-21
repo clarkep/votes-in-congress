@@ -14,10 +14,19 @@ html, body {
   height: 650px;
 }
 
+#select-congress {
+  position: absolute;
+  left: 0px;
+  top: -26px;
+  height: 25px;
+  width: 200px;
+}
+
 #select-chamber {
   position: absolute;
   height: 25px;
   top: -26px;
+  left: 205px;
 }
 
 #chamber {
@@ -129,6 +138,9 @@ tfoot {
 
 th,
 tr {
+  /* necessary for full width */
+  display: block;
+
   width: 100%;
   border: 1px solid rgb(160 160 160);
 }

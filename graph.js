@@ -36,29 +36,6 @@ export function degatan2(y, x) {
   return (Math.atan2(y, x)*180) / Math.PI;
 }
 
-/* Rows in table for which f(row) is true */
-function array_matches(array, f)
-{
-    var result = [];
-    for (var i=0; i<array.length; i++) {
-        if (f(array[i])) {
-            result.push(array[i]);
-        }
-    }
-    return result;
-}
-
-/* We ignore the possibility that a member leaves office and comes back in
-   in the same 2 year Congress */
-function served_together(member_row1, member_row2) {
-    if (Number(member_row1[23]) < Number(member_row2[22])) {
-        return false;
-    } else if (Number(member_row1[22]) >= Number(member_row2[23])) {
-        return false;
-    }
-    return true;
-}
-
 const HOUSE = 0;
 const SENATE = 1;
 const chamber_str = {
@@ -78,7 +55,7 @@ function filter_chamber(table, which_chamber) {
 }
 
 // Returns: sorted array of svg elements
-function chamber_seats(which_chamber) {
+function chamber_seats(which_chamber, how_many) {
     var svg = document.querySelector("#chamber");
     svg.setAttribute("viewBox", "0 0 800 450");
     const svgWidth = 800;
@@ -97,10 +74,11 @@ function chamber_seats(which_chamber) {
     // My: coordinates such that y is up. Transformed with svgHeight-My
     const origin_x = svgWidth / 2; const origin_My = 22 + c_r;
     var seats = [];
-    for (var i=0; i<rows.length; i++) {
+    var seat_i = 0;
+    for (var i=0; i<rows.length && seat_i<how_many; i++) {
         var theta = 0;
         var n = rows[i];
-        for (var j=0; j<n; j++) {
+        for (var j=0; j<n && seat_i<how_many; j++) {
             var x = origin_x + r*degcos(theta);
             var My = origin_My + r*degsin(theta);
             var circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
@@ -115,6 +93,7 @@ function chamber_seats(which_chamber) {
             circle.setAttribute("icspr", "-1");
             seats.push(circle);
             theta += 180. / (n-1);
+            seat_i += 1;
         }
         r += d_r;
     }
@@ -122,120 +101,122 @@ function chamber_seats(which_chamber) {
     return seats;
 }
 
-function house_members(members, chamber_seats) { 
-    var dup = 0;
-    var result = {};
-    var chamber_members = [];
+function house_seat_groups(members) { 
+    var districts = {};
+    var seat_groups = [];
     for (var i=0; i<members.length; i++) {
         if (members[i][1] === "House") {
             var member = members[i];
-            var dups = array_matches(members, row => (row[3]==member[3] && row[4]==member[4] && row[2]!=member[2]));
             if (member[4] == 0) {
                 // non voting
                 console.assert(["VI", "PR", "MP", "GU", "DC", "AS"].includes(member[5]));
                 continue;
             } else {
-                var dups = array_matches(members, row => 
-                    (row[3]==member[3] && row[4]==member[4] && row[2]!=member[2]));
-                dups = dups.map(row=>row[2]);
-                result[member[2]] = { "member": member, "dups": dups };
-                chamber_members.push(member[2]);
+                var district_code = member[3]+member[4];
+                var group;
+                if (districts[district_code]) {
+                    group = districts[district_code];
+                    group.push(member);
+                    // sort by reverse time served(last vote - first vote) 
+                    group.sort((b, a) => (Number(a[23])-Number(a[22]))-(Number(b[23])-Number(b[22])));
+                } else {
+                    group = [member];
+                    districts[district_code] = group;
+                    seat_groups.push(group);
+                }
             }
         }
     }
-    // console.log(dup.toString() + " duplicate members");
-    const nominate_col = 13;
-    chamber_members.sort((a, b) => result[b].member[nominate_col]-result[a].member[nominate_col]);
-    var seat_i = 0;
-    for (var i=0; i<chamber_members.length; i++) {
-        var icspr = chamber_members[i];
-        var member = result[icspr];
-        if (member.seat) {
-           continue; 
-        } else {
-            member.seat = chamber_seats[seat_i];
-            for (var j=0; j<member.dups.length; j++) {
-                var dup = result[member.dups[j]];
-                // same seat
-                dup.seat = chamber_seats[seat_i];
-            }
-            seat_i += 1;
-        }
-    }
-    return result;
+    const nominate_col = 13
+    // sort by reverse ideology score(conservative -> liberal) of the longest serving member
+    seat_groups.sort((b, a) => a[0][nominate_col]-b[0][nominate_col]);
+    return seat_groups;
 }
 
-function senate_members(members, chamber_seats) {
-    var result = {};
-    var chamber_members = [];
-    var states = {};
+function senate_seat_groups(members) {
+    var states = {}; 
     for (var i=0; i<members.length; i++) {
         if (members[i][1] === "Senate") {
-            var member = members[i];
-            var icspr = member[2];
-            result[icspr] = { "member": member };
-            chamber_members.push(icspr);
+            var member = members[i]; var icspr = member[2];
             var state = member[5];
             if (states[state]) { 
-                states[state].push(icspr);
+                states[state].push(member);
             } else {
-                states[state] = [icspr];
+                states[state] = [member];
             }
+        }
+    }
+    var states_arr = Object.values(states);
+    var seat_groups = [];
+    for (var i=0; i<states_arr.length; i++) {
+        var state = states_arr[i];
+        // sort by start date
+        state.sort((b, a) => (Number(b[22])-Number(a[22])));
+        var groupA = [state[0]];
+        var groupA_indices = [0];
+        var groupA_i = 0;
+        // Add senators who start immediately after the first senator finishes
+        // to the same seat group, "group A". Group B is everyone not in group A.
+        for (let j=1; j<state.length; j++) {
+            if (Number(state[j][22])>=Number(groupA[groupA_i][23])) {
+                groupA.push(state[j]);
+                groupA_indices.push(j);
+                groupA_i += 1;
+            }
+        }
+        for (let j=groupA_indices.length-1; j>= 0 ; j--) {
+            state.splice(groupA_indices[j], 1);
+        }
+        // sort by reverse time served(last vote - first vote) 
+        groupA.sort((b, a) => (Number(a[23])-Number(a[22]))-(Number(b[23])-Number(b[22])));
+        state.sort((b, a) => (Number(a[23])-Number(a[22]))-(Number(b[23])-Number(b[22])));
+        seat_groups.push(groupA);
+        if (state.length) {
+            seat_groups.push(state);
+        } else {
+            // PA only had one senator in the 2nd Congress
+            console.log(`No second senator found in ${groupA[0][5]}`);
         }
     }
     const nominate_col = 13;
-    chamber_members.sort((a, b) => result[b].member[nominate_col]-result[a].member[nominate_col]);
-    var seat_i = 0;
-    for (var i=0; i<chamber_members.length; i++) {
-        var icspr = chamber_members[i];
-        var member = result[icspr];
-        if (member.seat) {
-            continue;
-        }
-        member.seat = chamber_seats[seat_i];
-        if (states[member.member[5]].length > 2) {
-            var state = states[member.member[5]];
-            var seat_group = [ icspr ];
-            var cur = icspr;
-            for (var j=0; j<state.length; j++) {
-                if (result[state[j]].seat) {
-                    continue;
-                }
-                if (!seat_group.some((ic) => served_together(result[ic].member, result[state[j]].member))) {
-                    console.log("sharing a seat: ", cur, result[cur].member[9], state[j], result[state[j]].member[9]);
-                    result[state[j]].seat = chamber_seats[seat_i];
-                    seat_group.push(state[j]);
-                }
-            }
-        }
-        seat_i += 1;
-
-    }
-    return result;
+    seat_groups.sort((b, a) => a[0][nominate_col]-b[0][nominate_col]);
+    return seat_groups;
 }
 
 /* 
-  Assiging seats is different enough between the chambers that it
-  makes sense to use different functions.
-
   Returns: map, { [icspr]: { "member": table row, "seat": seat } } 
 */
-function chamber_members(members, which_chamber, chamber_seats) {
-    if (which_chamber==HOUSE) {
-        return house_members(members, chamber_seats);
-    } else {
-        return senate_members(members, chamber_seats);
+function assign_seats(seat_groups, chamber_seats) {
+    var result = {};
+    var seat_i = 0;
+    for (var i=0; i<seat_groups.length; i++) {
+        var group = seat_groups[i];
+        for (var j=0; j<group.length; j++) {
+            var mem = group[j];
+            result[mem[2]] = { 
+                member: mem,
+                seat: chamber_seats[seat_i],
+            }
+        }
+        seat_i += 1;
     }
+    return result;
 }
 
 function init_chamber(which_chamber, rollcalls, votes, members) {
     var chamber = { which: which_chamber,
                     vote: 2
                 };
+    
+    if (which_chamber==HOUSE) {
+        var seat_groups = house_seat_groups(members, chamber_seats);
+    } else {
+        var seat_groups = senate_seat_groups(members, chamber_seats);
+    }
 
-    chamber.seats = chamber_seats(which_chamber);
+    chamber.seats = chamber_seats(which_chamber, seat_groups.length);
 
-    chamber.members = chamber_members(members, which_chamber, chamber.seats);
+    chamber.members = assign_seats(seat_groups, chamber.seats);
 
     chamber.votes = filter_chamber(votes, which_chamber);
     
@@ -342,37 +323,40 @@ function update_label(rollcall, vote_cmp) {
     const nay_count = document.querySelector("#nay-count");
     nay_count.innerHTML = rollcall[7];
 
-    var yeas = Object.entries(vote_cmp.yea);
-    var yea_text;
-    if (yeas.length) {
-        yeas.sort((e1, e2)=>(e2[1] - e1[1]));
-        yea_text = "<small>("
-        for (let i=0; i<yeas.length; i++) {
-            let e = yeas[i];
-            yea_text += party_short[e[0]] + ": " + e[1] + ", ";
+    const sides = [Object.entries(vote_cmp.yea), Object.entries(vote_cmp.nay)];
+    // Breakdowns of the sides
+    for (let i=0; i<2; i++) {
+        var good_guys = sides[i];
+        var text;
+        if (good_guys.length) {
+            good_guys.sort((e1, e2)=>(e2[1] - e1[1]));
+            text = "<small>(";
+            // Unknown party, hence "Other"
+            var n_others = 0;
+            for (let j=0; j<good_guys.length; j++) {
+                let e = good_guys[j];
+                if (party_short[e[0]]) {
+                    text += party_short[e[0]] + ": " + e[1].toString() + ", ";
+                } else {
+                    n_others += e[1];
+                }
+            }
+            if (!n_others) {
+                text = text.slice(0, -2) + ")</small>";
+            } else {
+                text = text + "O: " + n_others.toString() + ")</small>";
+            }
+        } else {
+            text = "";
         }
-        yea_text = yea_text.slice(0, -2) + ")</small>";
-    } else {
-        yea_text = "";
-    }
-    const yea_breakdown = document.querySelector("#yea-breakdown");
-    yea_breakdown.innerHTML = yea_text;
-
-    var nays = Object.entries(vote_cmp.nay);
-    var nay_text;
-    if (nays.length) {
-        nays.sort((e1, e2)=>(e2[1] - e1[1]));
-        nay_text = "<small>("
-        for (let i=0; i<nays.length; i++) {
-            let e = nays[i];
-            nay_text += party_short[e[0]] + ": " + e[1] + ", ";
+        if (i===0) {
+            const yea_breakdown = document.querySelector("#yea-breakdown");
+            yea_breakdown.innerHTML = text;
+        } else {
+            const nay_breakdown = document.querySelector("#nay-breakdown"); 
+            nay_breakdown.innerHTML = text;
         }
-        nay_text = nay_text.slice(0, -2) + ")</small>";
-    } else {
-        nay_text = "";
     }
-    const nay_breakdown = document.querySelector("#nay-breakdown");
-    nay_breakdown.innerHTML = nay_text;
 
     const n_not_voting = Object.entries(vote_cmp.skip).reduce((acc, e)=>acc+Number(e[1]), 0);
     const not_voting_label = document.querySelector("#not-voting-label");
@@ -400,11 +384,10 @@ function load_vote(chamber, rollnum) {
         if (chamber.votes[i][2] == rollnum) {
             var vote = chamber.votes[i];
             var icspr = Math.round(vote[3]).toString();
-            var member = chamber.members[icspr]
+            var member = chamber.members[icspr];
             if (!member) {
                 // Sometimes a president's vote is listed as a vote 
                 // in one of the chambers.
-                // TODO: add assertion to that effect
                 i += 1;
                 continue;
             }
@@ -412,6 +395,7 @@ function load_vote(chamber, rollnum) {
         }
     }
     var vote_cmp = { yea: { }, nay: { }, skip: { }};
+    var misses = 0;
     // Find members who were in office for this vote but might not be explicitly listed
     for(const [icspr, member] of Object.entries(chamber.members)) {
         if (rollnum < member.member[22]|| rollnum > member.member[23]) {
@@ -420,9 +404,9 @@ function load_vote(chamber, rollnum) {
         }
         var seat = member.seat;
         if (seat) {
-            var party_code = member.member[6] 
+            var party_code = member.member[6]; 
             var vote_code = icspr_votes[icspr] ? vote_codes[icspr_votes[icspr]] : vote_codes[100];
-            var fill = vote_colors[vote_code][party_code];
+            var fill = vote_colors[vote_code][party_code] ? vote_colors[vote_code][party_code] : vote_colors[vote_code][328];
             if (vote_cmp[vote_code][party_code]) {
                 vote_cmp[vote_code][party_code] += 1;
             } else {
@@ -431,6 +415,7 @@ function load_vote(chamber, rollnum) {
             seat.setAttribute("fill", fill);
             seat.setAttribute("icspr", icspr);
         } else {
+            console.log("miss", member);
             misses += 1;
         }
     }
@@ -448,7 +433,6 @@ function load_vote(chamber, rollnum) {
     update_label(rc, vote_cmp); 
 }
 
-
 function rollcall_table(rollcalls, which_chamber) {
     const chamber_str = which_chamber === HOUSE ? "House" : "Senate";
     const tbl = document.querySelector("#rollcalls");
@@ -459,18 +443,20 @@ function rollcall_table(rollcalls, which_chamber) {
             var tr = tbl.appendChild(document.createElement("tr"));
             // var td = tr.appendChild(document.createElement("td"));
             var button = tr.appendChild(document.createElement("div"));
+            button.style.width = "100%";
             button.setAttribute("class", "vote-button");
             button.setAttribute("vote-number", row[2].toString());
             button.addEventListener("click", voteClicked);
             button.innerHTML = row[2].toString() + ". "
                                + (row[13].trim().length ?  "<span style='color: black;'>" + row[13].trim() + "</span><br>" : "")
-                               + (row[15].trim().length ? row[15].trim() + "<br>" : "" )
+                               + (row[15].trim().length ? row[15].trim() + "<br>" : (row[17].trim().length ? row[17].trim() + "<br>" : "") )
                                + " <span style='color: #666666;'>" + row[16] + "</span>";
         }
     }
 }
 
 var st = { 
+    congress_selector: null,
     chamber_svg: null,
     rollcalls: null,
     votes: null,
@@ -490,7 +476,7 @@ function dist(x1, y1, x2, y2) {
 
 function chamberSelected(event) {
     var chamber = event.target.value=="House" ? st.house : st.senate;
-    console.log(chamber.which);
+    st.cur_button = null;
     st.selected = chamber;
     draw_chamber(chamber);
     rollcall_table(st.rollcalls, chamber.which);
@@ -541,9 +527,8 @@ function chamberMouseMove(event) {
 
 function expand_button(button, vote_n) {
     var h = button.clientHeight;
-    console.log(h);
     button.parentElement.style.borderWidth = "2px";
-    button.parentElement.style.borderColor = "black";
+    button.parentElement.style.borderColor = "#888888";
     button.style.height = (h + 30).toString() + "px";
     button.style.backgroundColor = "#ffffff";
     button.style.userSelect = "auto";
@@ -590,7 +575,30 @@ function voteClicked(event) {
     expand_button(button, vote_n);
 }
 
-function main(rollcalls_str, votes_str, members_str) {
+function congressSelected(event) {
+    const congress_n = Number(event.target.value);
+    load_congress(congress_n);
+}
+
+function setup_congress_selector(initial_congress_n) {
+    const selector = document.querySelector("#select-congress")
+    const n_congresses = 118;
+    for (let i=1; i<n_congresses+1; i++) {
+        const c = document.createElement("option");
+        c.setAttribute("value", i.toString());
+        const normal_endings = [ "th", "st", "nd", "rd", "th", "th", "th", "th", "th", "th"];
+        const ordinal = i.toString() + (((i%100) >= 10 && (i%100) < 20 ) ? "th" : normal_endings[i % 10]);
+        const start_year = 1789 + 2*(i-1);
+        const end_year = start_year + 2;
+        c.innerHTML = ordinal + " Congress (" + start_year.toString() + "-" + end_year.toString() + ")";
+        selector.appendChild(c);
+    }
+    st.congress_selector = selector;
+    selector.value = initial_congress_n.toString();
+    selector.addEventListener("change", congressSelected);
+}
+
+function congress_main(rollcalls_str, votes_str, members_str, congress_n) {
     const rollcalls = parseCSV(rollcalls_str);
     st.rollcalls = rollcalls;
     const votes = parseCSV(votes_str);
@@ -608,14 +616,23 @@ function main(rollcalls_str, votes_str, members_str) {
     select_chamber.addEventListener("change", chamberSelected);
 
     load_vote(st.selected, st.selected.vote);
+
+    if (!st.congress_selector) {
+        setup_congress_selector(congress_n);
+    }
+
     window.onresize = reposition_label;
 }
 
-const rollcallsPromise = fetch("HS117_rollcalls.csv").then(response => response.text());
-const votesPromise = fetch("HS117_votes.csv").then(response => response.text());
-const membersPromise = fetch("HS117_members_v2.csv").then(response => response.text());
+function load_congress(congress_n) {
+    const rollcallsPromise = fetch(`data/HS${congress_n}_rollcalls.csv` ).then(response => response.text());
+    const votesPromise = fetch(`data/HS${congress_n}_votes.csv`).then(response => response.text());
+    const membersPromise = fetch(`data/HS${congress_n}_members.csv`).then(response => response.text());
 
-Promise.all([rollcallsPromise, votesPromise, membersPromise]).then(values => main(...values));
+    Promise.all([rollcallsPromise, votesPromise, membersPromise]).then(values => congress_main(...values, congress_n));
+}
+
+load_congress(2);
 
 // prevent double click from annoyingly selecting text
 document.addEventListener("mousedown", function(event) {
