@@ -59,8 +59,8 @@ def split_file_by_congress(fn, out_format):
     out.close()
 
 def split_members_and_votes():
-    member_fn = "HSall_members.csv"
-    votes_fn = "HSall_votes.csv"
+    member_fn = "raw/HSall_members.csv"
+    votes_fn = "raw/HSall_votes.csv"
     all_members = {}
     member_sep = []
     member_sep_ic = []
