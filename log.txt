@@ -1,6 +1,0 @@
-Data:
-A: <g>(1) HS117_votes.csv</g>, <g>(2) HS117_members.csv</g>, <g>(3) HS117_rollcalls.csv</g>[1]
-
-
-Refs:
-[1] https://voteview.com/data, 6/11/2024

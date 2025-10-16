@@ -71,7 +71,7 @@ function chamber_seats(which_chamber, how_many) {
         var d_r = 40;
         var r = 190;
     }
-    // My: coordinates such that y is up. Transformed with svgHeight-My
+    // My: a y coordinate that points up. Transformed with svgHeight-My
     const origin_x = svgWidth / 2; const origin_My = 22 + c_r;
     var seats = [];
     var seat_i = 0;
@@ -100,6 +100,8 @@ function chamber_seats(which_chamber, how_many) {
     seats.sort((a, b) => a.order - b.order)
     return seats;
 }
+
+/* TODO: move seat assignment to pre-processing? */
 
 function house_seat_groups(members) { 
     var districts = {};
@@ -289,19 +291,19 @@ const vote_codes = {
 
 const vote_colors = {
     yea: {
-        200: "#ff0030",
         100: "#4000ff",
+        200: "#ff0030",
         328: "#40ff00",
     },
     nay: {
-        200: "#ffd8e9",
         100: "#d3deff",
+        200: "#ffd8e9",
         328: "#d3ffde",
 
     },
     skip: {
-        200: "#888888",
         100: "#888888",
+        200: "#888888",
         328: "#888888",
     },
 };
@@ -331,8 +333,7 @@ function update_label(rollcall, vote_cmp) {
         if (good_guys.length) {
             good_guys.sort((e1, e2)=>(e2[1] - e1[1]));
             text = "<small>(";
-            // Unknown party, hence "Other"
-            var n_others = 0;
+            var n_others = 0; // Unknown party, hence "Other"
             for (let j=0; j<good_guys.length; j++) {
                 let e = good_guys[j];
                 if (party_short[e[0]]) {
@@ -375,6 +376,8 @@ function load_vote(chamber, rollnum) {
   
        All of this means we have to loop through votes, members, and seats here
        to get all the information we need.
+
+       TODO: move a lot of this to pre-processing?
     */
     console.log("loading vote ", rollnum);
     const chamber_str = chamber.which == HOUSE ? "House" : "Senate";
@@ -383,7 +386,7 @@ function load_vote(chamber, rollnum) {
     for (var i=0; i< chamber.votes.length; i++) {
         if (chamber.votes[i][2] == rollnum) {
             var vote = chamber.votes[i];
-            var icspr = Math.round(vote[3]).toString();
+            var icspr = Math.floor(Number(vote[3])).toString();
             var member = chamber.members[icspr];
             if (!member) {
                 // Sometimes a president's vote is listed as a vote 
@@ -391,7 +394,8 @@ function load_vote(chamber, rollnum) {
                 i += 1;
                 continue;
             }
-            icspr_votes[icspr] = vote[4];
+            // Congress 116 (at least) stores vote codes as string floats, e.g. "6.0"
+            icspr_votes[icspr] = Math.floor(Number(vote[4]));
         }
     }
     var vote_cmp = { yea: { }, nay: { }, skip: { }};
@@ -475,7 +479,8 @@ function dist(x1, y1, x2, y2) {
 }
 
 function chamberSelected(event) {
-    var chamber = event.target.value=="House" ? st.house : st.senate;
+    const select_chamber = document.querySelector("#select-chamber");
+    var chamber = select_chamber.value=="House" ? st.house : st.senate;
     st.cur_button = null;
     st.selected = chamber;
     draw_chamber(chamber);
@@ -538,7 +543,7 @@ function expand_button(button, vote_n) {
     const voteview = document.createElement("a");
     const vote_code = "R" 
                       + (st.selected.which===HOUSE ? "H"  : "S")
-                      + "117"
+                      + ("00" + st.congress_selector.value).slice(-3)
                       + ("000" + row[2]).slice(-4);
     const url = "https://voteview.com/rollcall/" + vote_code;
     voteview.setAttribute("href", url);
@@ -576,6 +581,9 @@ function voteClicked(event) {
 }
 
 function congressSelected(event) {
+    /* TODO: this caused a bug, but make sure all state is set up right. */
+    st.cur_button = null;
+
     const congress_n = Number(event.target.value);
     load_congress(congress_n);
 }
@@ -608,16 +616,16 @@ function congress_main(rollcalls_str, votes_str, members_str, congress_n) {
     st.chamber_svg = document.querySelector("#chamber");
     st.house = init_chamber(HOUSE, rollcalls, votes, members);
     st.senate = init_chamber(SENATE, rollcalls, votes, members);
-    st.selected = st.house;
-    draw_chamber(st.house);
-    rollcall_table(rollcalls, HOUSE);
+
+    // Load whichever chamber is selected, on first run this is the House
+    chamberSelected(null);
 
     const select_chamber = document.querySelector("#select-chamber");
     select_chamber.addEventListener("change", chamberSelected);
 
     load_vote(st.selected, st.selected.vote);
 
-    if (!st.congress_selector) {
+    if (!st.congress_selector) { // first run
         setup_congress_selector(congress_n);
     }
 
@@ -632,7 +640,7 @@ function load_congress(congress_n) {
     Promise.all([rollcallsPromise, votesPromise, membersPromise]).then(values => congress_main(...values, congress_n));
 }
 
-load_congress(2);
+load_congress(116);
 
 // prevent double click from annoyingly selecting text
 document.addEventListener("mousedown", function(event) {
