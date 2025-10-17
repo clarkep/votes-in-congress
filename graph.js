@@ -502,14 +502,16 @@ function chamberMouseMove(event) {
     if (elem.tagName === "circle") {
         var elem_x, elem_y;
         [ elem_x, elem_y ] = fromSVGcoords(elem.cx.baseVal.value, elem.cy.baseVal.value);
-        const no_hit_r = 2;
+        const no_hit_r = 0;
+        const elem_r = Number(elem.getAttribute("r"));
         if (!(elem == st.over_seat)
             && dist(elem_x, elem_y, event.layerX, event.layerY)
-            <(Number(elem.getAttribute("r"))-no_hit_r)) {
+            < (elem_r-no_hit_r)) {
             const popup = document.querySelector("#member-popup");
             popup.style.visibility = "visible";
-            popup.style.top = Math.round(event.layerY-popup.clientHeight)+"px";
-            popup.style.left = Math.round(event.layerX)+"px";
+            const off = elem_r * 2 ** -0.5;
+            popup.style.top = Math.round(elem_y-off-popup.clientHeight)+"px";
+            popup.style.left = Math.round(elem_x+off)+"px";
             const icspr = elem.getAttribute("icspr");
             const member = st.selected.members[icspr];
             if (!member) { // XXX see load_vote
