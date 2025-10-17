@@ -498,21 +498,27 @@ function fromSVGcoords(x, y)
     return [x*x_scale, y*y_scale]
 }
 
+// When there is a chamber drawn, this handles mouse moves for the whole document. That way it can
+// remove the popup when necessary even if the move is outside the chamber rect.
 function chamberMouseMove(event) {
     const elem = document.elementFromPoint(event.clientX, event.clientY);
     if (elem.tagName === "circle") {
-        var elem_x, elem_y;
-        [ elem_x, elem_y ] = fromSVGcoords(elem.cx.baseVal.value, elem.cy.baseVal.value);
+        const rect = elem.getBoundingClientRect();
+        const elem_x = rect.x;
+        const elem_y = rect.y;
         const no_hit_r = 0;
         const elem_r = Number(elem.getAttribute("r"));
-        if (!(elem == st.over_seat)
-            && dist(elem_x, elem_y, event.layerX, event.layerY)
-            < (elem_r-no_hit_r)) {
+        if (!(elem == st.over_seat)) {
             const popup = document.querySelector("#member-popup");
+            const parent_rect = popup.parentNode.getBoundingClientRect();
+            const parent_x = parent_rect.x;
+            const parent_y = parent_rect.y;
             popup.style.visibility = "visible";
-            const off = elem_r * 2 ** -0.5;
-            popup.style.top = Math.round(elem_y-off-popup.clientHeight)+"px";
-            popup.style.left = Math.round(elem_x+off)+"px";
+            const r = (rect.width / 2);
+            const off_x = (r - 2) * Math.cos(Math.PI / 3);
+            const off_y = (r - 2) * Math.sin(Math.PI / 3);
+            popup.style.left = Math.round(elem_x + r + off_x - parent_x)+"px";
+            popup.style.top = Math.round(elem_y + r - off_y - popup.clientHeight-parent_y)+"px";
             const icspr = elem.getAttribute("icspr");
             const member = st.selected.members[icspr];
             if (!member) { // XXX see load_vote
