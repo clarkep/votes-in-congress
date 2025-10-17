@@ -247,11 +247,12 @@ function reposition_label(event) {
     const all = document.querySelector("#vote-summary");
     const normal_w = 800;
     const normal_size = 0.85;
-    const svg_w = st.chamber_svg.width.baseVal.value;
+    const rect = st.chamber_svg.getBoundingClientRect();
+    const svg_w = rect.width;
+    const svg_h = rect.height;
     all.style.fontSize = (normal_size * (svg_w/normal_w)).toString() + "rem";
     // XXX get the new width given updated fontSize
     const w = all.clientWidth;
-    const svg_h = st.chamber_svg.height.baseVal.value;
     all.style.top = (0.80 * svg_h).toString() + "px";
     all.style.left = (0.5 * svg_w - 0.5*w).toString() + "px";
 }
