@@ -1,3 +1,18 @@
+var st = {
+    congress_selector: null,
+    chamber_svg: null,
+    rollcalls: null,
+    votes: null,
+    house: null,
+    senate: null,
+    selected: null,
+    house_vote: 2,
+    senate_vote: 2,
+    over_seat: null,
+    over_seat_selected_t: null,
+    cur_button: null,
+};
+
 // [1] 
 function parseCSV(str) {
     const arr = [];
@@ -24,15 +39,15 @@ function parseCSV(str) {
     return arr; 
 }
 
-export function degcos(deg) {
+function degcos(deg) {
   return Math.cos(deg * Math.PI / 180);
 }
 
-export function degsin(deg) {
+function degsin(deg) {
     return Math.sin(deg * Math.PI / 180);
 }
 
-export function degatan2(y, x) {
+function degatan2(y, x) {
   return (Math.atan2(y, x)*180) / Math.PI;
 }
 
@@ -86,6 +101,7 @@ function chamber_seats(which_chamber, how_many) {
             circle.setAttribute("r", c_r.toString());
             circle.setAttribute("fill", "#888888");
             circle.setAttribute("stroke", "black");
+                circle.setAttribute("class", "seat");
             // Spots are ordered by angle, with row as a tie breaker 
             circle.order = Math.floor(theta)*rows.length + i;
             circle.setAttribute("order", circle.order.toString());
@@ -460,21 +476,6 @@ function rollcall_table(rollcalls, which_chamber) {
     }
 }
 
-var st = { 
-    congress_selector: null,
-    chamber_svg: null,
-    rollcalls: null,
-    votes: null,
-    house: null,
-    senate: null,
-    selected: null,
-    house_vote: 2,
-    senate_vote: 2,
-    over_seat: null,
-    over_seat_selected_t: null,
-    cur_button: null,
-};
-
 function dist(x1, y1, x2, y2) {
     return ((x2-x1)**2 + (y2-y1)**2)**0.5;
 }
@@ -502,7 +503,7 @@ function fromSVGcoords(x, y)
 // remove the popup when necessary even if the move is outside the chamber rect.
 function chamberMouseMove(event) {
     const elem = document.elementFromPoint(event.clientX, event.clientY);
-    if (elem.tagName === "circle") {
+    if (elem.tagName === "circle" && elem.getAttribute("class") == "seat") {
         const rect = elem.getBoundingClientRect();
         const elem_x = rect.x;
         const elem_y = rect.y;
@@ -614,6 +615,24 @@ function setup_congress_selector(initial_congress_n) {
     selector.value = initial_congress_n.toString();
     selector.addEventListener("change", congressSelected);
 }
+
+function search_members()
+{
+
+}
+
+function search_votes()
+{
+ 
+}
+
+function setup_search_bars()
+{
+    const search_members_input = document.getElementById("search-members-input");
+
+    const search_votes_input = document.getElementById("search-votes-input");
+}
+
 
 function congress_main(rollcalls_str, votes_str, members_str, congress_n) {
     const rollcalls = parseCSV(rollcalls_str);

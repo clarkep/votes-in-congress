@@ -9,7 +9,7 @@
 		<link href="https://fonts.googleapis.com/css2?family=Cormorant:wght@500&display=swap" rel="stylesheet">
 	</head>
 	<body>
-		<script type="module" src="graph.js"></script>
+		<script src="graph.js"></script>
 		<header>
 			<h1 id="page-title">Votes in Congress</h1>
 		</header>
@@ -20,6 +20,22 @@
 					<option value="House">House of Representatives</option>
 					<option value="Senate">Senate</option>
 				</select>
+				<div id="search-members" class="search">
+				  <input
+				    id="search-members-input"
+				    class="search-input"
+				    name="q"
+				    type="search"
+				    placeholder="Search members..."
+				    autocomplete="off"
+				  />
+			      <button id="search-members-button" class="search-button">
+		            <svg viewBox="0 0 24 24">
+		                <circle cx="11" cy="11" r="8"></circle>
+		                <path d="m21 21-4.35-4.35"></path>
+		            </svg>
+		          </button>
+				</div>
 				<svg id="chamber"></svg>
 				<div id="member-popup"></div>
 				<div id="vote-summary">
@@ -31,10 +47,25 @@
 					<span id="not-voting-label"></span>
 				</div>
 			</div>
-			<table id="rollcalls">
-		</div>
-		<div>
-		</table>
+			<div id="rollcalls-box">
+				<table id="rollcalls"></table>
+				<div id="search-votes" class="search">
+				  <input
+				    id="search-votes-input"
+				    class="search-input"
+				    name="q"
+				    type="search"
+				    placeholder="Search votes..."
+				    autocomplete="off"
+				  />
+			      <button id="search-votes-button" class="search-button">
+		            <svg viewBox="0 0 24 24">
+		                <circle cx="11" cy="11" r="8"></circle>
+		                <path d="m21 21-4.35-4.35"></path>
+		            </svg>
+		          </button>
+				</div>
+			</div>
 		</div>
 	</body>
 </html>
