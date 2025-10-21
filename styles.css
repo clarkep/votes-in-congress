@@ -5,6 +5,7 @@ html, body {
     padding: 0;
     overflow-y: hidden;
     font-family: "Times New Roman", "serif";
+    box-sizing: border-box;
 }
 
 header {
@@ -12,8 +13,8 @@ header {
 }
 
 #page-title {
-  text-align: center;                 /* center the text */
-  font-size: clamp(2rem, 6vw, 3rem);  /* responsive size */
+  text-align: center;
+  font-size: clamp(2rem, 6vw, 3rem);
   line-height: 1.1;
   margin: 1.5rem 0;
   letter-spacing: -0.02em;
@@ -71,6 +72,7 @@ header {
   padding-right: 16px;
 }
 
+/* In fact the little 'x' button still shows up in Chrome, but is hidden by the search icon */
 .search-input::-ms-clear {
    width : 0;
    height: 0;
@@ -94,6 +96,31 @@ header {
   stroke-width: 2.5;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+#search-members-results
+{
+  position: absolute;
+  width: 400px;
+  top: -1px;
+  right: -3px;
+  background: white;
+  opacity: 1;
+/*
+  border-radius: 20px;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+*/
+/*  opacity: 0; */
+  visibility: hidden;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid black;
+}
+
+.search-members-result {
+  height: 30px;
+  text-color: #000;
+  border-top: 1px solid black;
 }
 
 #chamber {
@@ -207,7 +234,7 @@ header {
   background-color: #dddddd;
 }
 
-#search-votes {
+#search-rollcalls {
   position: absolute;
   top: -26px;
   left: 0px;
@@ -215,7 +242,7 @@ header {
   height: 25px;
 }
 
-#search-votes-input {
+#search-rollcalls-input {
   position: absolute;
   top: 0px;
   right: 0px;
@@ -224,7 +251,7 @@ header {
   padding-right: 16px;
 }
 
-#search-votes-button {
+#search-rollcalls-button {
   position: absolute;
   top: 2px;
   right: 3px;

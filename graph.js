@@ -9,7 +9,6 @@ var st = {
     house_vote: 2,
     senate_vote: 2,
     over_seat: null,
-    over_seat_selected_t: null,
     cur_button: null,
 };
 
@@ -49,6 +48,10 @@ function degsin(deg) {
 
 function degatan2(y, x) {
   return (Math.atan2(y, x)*180) / Math.PI;
+}
+
+function xy_in_rect(x, y, rect) {
+    return x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom;
 }
 
 const HOUSE = 0;
@@ -246,6 +249,7 @@ function init_chamber(which_chamber, rollcalls, votes, members) {
 function draw_chamber(chamber) {
     var svg = document.querySelector("#chamber");
     document.addEventListener("mousemove", chamberMouseMove);
+    document.addEventListener("mousedown", chamber_mousedown);
     svg.innerHTML = "";
     for (var i=0; i<chamber.seats.length; i++) {
         svg.appendChild(chamber.seats[i]);
@@ -454,13 +458,21 @@ function load_vote(chamber, rollnum) {
     update_label(rc, vote_cmp); 
 }
 
-function rollcall_table(rollcalls, which_chamber) {
+function rollcall_matches(row, query) {
+    if (!query) {
+        return true;
+    }
+    const search_text = row[13] + row[15] + row[16] + row[17];
+    return search_text.toLowerCase().includes(query.toLowerCase());
+}
+
+function rollcall_table(rollcalls, which_chamber, query) {
     const chamber_str = which_chamber === HOUSE ? "House" : "Senate";
     const tbl = document.querySelector("#rollcalls");
     tbl.innerHTML = "";
-    for (var i=1; i<rollcalls.length; i++) {
+    for (var i=0; i<rollcalls.length; i++) {
         var row = rollcalls[i];
-        if (row[1]===chamber_str) {
+        if (row[1]===chamber_str && rollcall_matches(row, query)) {
             var tr = tbl.appendChild(document.createElement("tr"));
             // var td = tr.appendChild(document.createElement("td"));
             var button = tr.appendChild(document.createElement("div"));
@@ -486,7 +498,8 @@ function chamberSelected(event) {
     st.cur_button = null;
     st.selected = chamber;
     draw_chamber(chamber);
-    rollcall_table(st.rollcalls, chamber.which);
+    // xx load current search-box query?
+    rollcall_table(chamber.rollcalls, chamber.which, "");
     load_vote(chamber, chamber.vote);
 }
 
@@ -499,44 +512,82 @@ function fromSVGcoords(x, y)
     return [x*x_scale, y*y_scale]
 }
 
-// When there is a chamber drawn, this handles mouse moves for the whole document. That way it can
-// remove the popup when necessary even if the move is outside the chamber rect.
+function show_member_popup(seat_el, persist) {
+    if (st.over_seat) {
+        st.over_seat.setAttribute("stroke-width", "1");
+        st.over_seat.setAttribute("stroke", "#000");
+    }
+    const rect = seat_el.getBoundingClientRect();
+    const elem_x = rect.x;
+    const elem_y = rect.y;
+    const no_hit_r = 0;
+    const popup = document.querySelector("#member-popup");
+    const parent_rect = popup.parentNode.getBoundingClientRect();
+    const parent_x = parent_rect.x;
+    const parent_y = parent_rect.y;
+    popup.style.visibility = "visible";
+    const r = (rect.width / 2);
+    const off_x = (r - 2) * Math.cos(Math.PI / 3);
+    const off_y = (r - 2) * Math.sin(Math.PI / 3);
+    popup.style.left = Math.round(elem_x + r + off_x - parent_x)+"px";
+    popup.style.top = Math.round(elem_y + r - off_y - popup.clientHeight-parent_y)+"px";
+    const icspr = seat_el.getAttribute("icspr");
+    const member = st.selected.members[icspr];
+    if (persist) {
+        popup.setAttribute("persist", "true");
+        seat_el.setAttribute("stroke", "#0ff");
+        seat_el.setAttribute("stroke-width", "1");
+    } else {
+        popup.setAttribute("persist", "false");
+        seat_el.setAttribute("stroke", "#000");
+    }
+    if (!member) { // XXX see load_vote
+        popup.innerHTML = "Unknown member";
+    } else {
+        popup.innerHTML = member.member[9];
+    }
+    st.over_seat = seat_el;
+}
+
+// This handles mouse moves for the whole document. That way it can remove the popup when necessary
+// even if the move is outside the chamber rect.
 function chamberMouseMove(event) {
     const elem = document.elementFromPoint(event.clientX, event.clientY);
+    const popup = document.querySelector("#member-popup");
     if (elem.tagName === "circle" && elem.getAttribute("class") == "seat") {
-        const rect = elem.getBoundingClientRect();
-        const elem_x = rect.x;
-        const elem_y = rect.y;
-        const no_hit_r = 0;
         const elem_r = Number(elem.getAttribute("r"));
-        if (!(elem == st.over_seat)) {
-            const popup = document.querySelector("#member-popup");
-            const parent_rect = popup.parentNode.getBoundingClientRect();
-            const parent_x = parent_rect.x;
-            const parent_y = parent_rect.y;
-            popup.style.visibility = "visible";
-            const r = (rect.width / 2);
-            const off_x = (r - 2) * Math.cos(Math.PI / 3);
-            const off_y = (r - 2) * Math.sin(Math.PI / 3);
-            popup.style.left = Math.round(elem_x + r + off_x - parent_x)+"px";
-            popup.style.top = Math.round(elem_y + r - off_y - popup.clientHeight-parent_y)+"px";
-            const icspr = elem.getAttribute("icspr");
-            const member = st.selected.members[icspr];
-            if (!member) { // XXX see load_vote
-                popup.innerHTML = "Unknown member";
-            } else {
-                popup.innerHTML = member.member[9];
-            }
-            st.over_seat = elem;
-            st.over_seat_selected_t = Date.now();
+        if (!(elem == st.over_seat) && popup.getAttribute("persist")!=="true") {
+            show_member_popup(elem, false);
         }
-    } else if (elem.id !=="member-popup") {
-        if (st.over_seat) {
+    } else if (elem !== popup) {
+        if (st.over_seat && popup.getAttribute("persist")!=="true") {
             st.over_seat.setAttribute("stroke-width", "1");
+            st.over_seat.setAttribute("stroke", "#000");
             st.over_seat = null;
-            const popup = document.querySelector("#member-popup");
+            popup.setAttribute("persist", "false");
             popup.style.visibility = "hidden";
         }
+    }
+}
+
+function chamber_mousedown(event) {
+    const popup = document.querySelector("#member-popup");
+    const rect = st.chamber_svg.getBoundingClientRect();
+    if (event.target !== popup && st.over_seat && xy_in_rect(event.clientX, event.clientY, rect)) {
+        const cls = event.target.getAttribute("class");
+        // prevent immediately closing after the click that opens a popup with
+        // member_search_result_chosen
+        if (cls==="search-members-result" || cls==="seat") {
+            const icspr = event.target.getAttribute("icspr");
+            if (icspr && st.over_seat && icspr === st.over_seat.getAttribute("icspr")) {
+                return;
+            }
+        }
+        st.over_seat.setAttribute("stroke-width", "1");
+        st.over_seat.setAttribute("stroke", "#000");
+        st.over_seat = null;
+        popup.setAttribute("persist", "false");
+        popup.style.visibility = "hidden";
     }
 }
 
@@ -616,21 +667,121 @@ function setup_congress_selector(initial_congress_n) {
     selector.addEventListener("change", congressSelected);
 }
 
-function search_members()
+function my_scroll_into_view(el, container)
 {
-
+    er = el.getBoundingClientRect();
+    cr = container.getBoundingClientRect();
+    if (er.top < cr.top) {
+        container.scrollTo({ top: er.top - cr.top + container.scrollTop, left: 0, behavior: "instant"});
+    } else if (er.bottom > cr.bottom) {
+        container.scrollTo({ top: er.bottom - cr.bottom + container.scrollTop, left: 0, behavior: "instant"});
+    }
 }
 
-function search_votes()
+function select_member_result(el)
 {
- 
+    const results_box = el.parentNode;
+    const old_i = results_box.getAttribute("sel-index");
+    if (old_i.length !== 0) {
+        old_el = results_box.children[Number(old_i)];
+        old_el.style.backgroundColor = "#fff";
+    }
+    results_box.setAttribute("sel-index", Number(el.getAttribute("i")));
+    results_box.setAttribute("sel-icspr", Number(el.getAttribute("icspr")));
+    el.style.backgroundColor = "#ddd";
+    my_scroll_into_view(el, results_box);
+}
+
+function member_search_result_chosen(el) {
+    const input_box = document.getElementById("search-members-input");
+    input_box.value = "";
+    input_box.blur();
+    /*
+    const results_box = document.getElementById("search-members-results");
+    results_box.style.visibility = "hidden";
+    */
+
+    show_member_popup(st.selected.members[Number(el.getAttribute("icspr"))].seat, true);
+}
+
+function search_members(ev)
+{
+    const query = ev.target.value;
+    const results_box = document.getElementById("search-members-results");
+    let results = [];
+    if (query) {
+        results_box.innerHTML = "";
+        let i = 0;
+        for(const [icspr, member] of Object.entries(st.selected.members)) {
+            if (member.member[9].toLowerCase().includes(query.toLowerCase())) {
+                const r = document.createElement("div");
+                r.setAttribute("class", "search-members-result");
+                r.setAttribute("icspr", member.member[2]);
+                r.setAttribute("i", i);
+                r.innerHTML = member.member[9];
+                r.addEventListener("mouseenter", (e) => select_member_result(e.target));
+                r.addEventListener("mousedown", (e) => member_search_result_chosen(e.target));
+                results_box.appendChild(r);
+                i++;
+            }
+        }
+        results_box.style.visibility = "visible";
+        if (results_box.children.length > 0) {
+            results_box.setAttribute("sel-index", "");
+            results_box.setAttribute("sel-icspr", "");
+            select_member_result(results_box.children[0]);
+        }
+    } else {
+        results_box.style.visibility = "hidden";
+        results_box.setAttribute("sel-index", "");
+        results_box.setAttribute("sel-icspr", "");
+    }
+}
+
+function search_rollcalls(ev)
+{
+    const query = ev.target.value;
+    console.log(`searching query ${query} !query: ${!query}`);
+    rollcall_table(st.selected.rollcalls, st.selected.which, query);
+}
+
+function search_members_input_keydown(ev) {
+    const results_box = document.getElementById("search-members-results");
+    const sel_i = results_box.getAttribute("sel-index");
+    let next_sel_i = -1;
+    if (ev.key === "Enter") {
+        if (sel_i && sel_i.length > 0) {
+            console.log(sel_i);
+            member_search_result_chosen(results_box.children[Number(sel_i)]);
+        }
+    } else if (ev.key == "ArrowDown") {
+        if (sel_i && sel_i.length > 0) {
+            next_sel_i = Number(sel_i) == results_box.children.length - 1? 0 : Number(sel_i) + 1;
+        }
+    } else if (ev.key == "ArrowUp") {
+        if (sel_i && sel_i.length > 0) {
+            next_sel_i = Number(sel_i) == 0 ? results_box.children.length - 1: Number(sel_i) - 1;
+        }
+    }
+    if (next_sel_i >= 0) {
+        select_member_result(results_box.children[next_sel_i]);
+        ev.preventDefault();
+    }
 }
 
 function setup_search_bars()
 {
     const search_members_input = document.getElementById("search-members-input");
+    search_members_input.addEventListener("input", search_members);
+    search_members_input.addEventListener("focus", search_members);
+    search_members_input.addEventListener("blur", (event)=>{
+        const results_box = document.getElementById("search-members-results");
+        results_box.style.visibility = "hidden";
+    });
+    search_members_input.addEventListener("keydown", search_members_input_keydown);
 
-    const search_votes_input = document.getElementById("search-votes-input");
+    const search_rollcalls_input = document.getElementById("search-rollcalls-input");
+    search_rollcalls_input.addEventListener("input", search_rollcalls);
 }
 
 
@@ -652,6 +803,8 @@ function congress_main(rollcalls_str, votes_str, members_str, congress_n) {
     select_chamber.addEventListener("change", chamberSelected);
 
     load_vote(st.selected, st.selected.vote);
+
+    setup_search_bars();
 
     if (!st.congress_selector) { // first run
         setup_congress_selector(congress_n);
