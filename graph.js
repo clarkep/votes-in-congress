@@ -12,7 +12,7 @@ var st = {
     cur_button: null,
 };
 
-// [1] 
+// [1]
 function parseCSV(str) {
     const arr = [];
     let quote = false;
@@ -35,7 +35,7 @@ function parseCSV(str) {
 
         arr[row][col] += cc;
     }
-    return arr; 
+    return arr;
 }
 
 function degcos(deg) {
@@ -105,7 +105,7 @@ function chamber_seats(which_chamber, how_many) {
             circle.setAttribute("fill", "#888888");
             circle.setAttribute("stroke", "black");
                 circle.setAttribute("class", "seat");
-            // Spots are ordered by angle, with row as a tie breaker 
+            // Spots are ordered by angle, with row as a tie breaker
             circle.order = Math.floor(theta)*rows.length + i;
             circle.setAttribute("order", circle.order.toString());
             // XXX see load_vote
@@ -122,7 +122,7 @@ function chamber_seats(which_chamber, how_many) {
 
 /* TODO: move seat assignment to pre-processing? */
 
-function house_seat_groups(members) { 
+function house_seat_groups(members) {
     var districts = {};
     var seat_groups = [];
     for (var i=0; i<members.length; i++) {
@@ -138,7 +138,7 @@ function house_seat_groups(members) {
                 if (districts[district_code]) {
                     group = districts[district_code];
                     group.push(member);
-                    // sort by reverse time served(last vote - first vote) 
+                    // sort by reverse time served(last vote - first vote)
                     group.sort((b, a) => (Number(a[23])-Number(a[22]))-(Number(b[23])-Number(b[22])));
                 } else {
                     group = [member];
@@ -155,12 +155,12 @@ function house_seat_groups(members) {
 }
 
 function senate_seat_groups(members) {
-    var states = {}; 
+    var states = {};
     for (var i=0; i<members.length; i++) {
         if (members[i][1] === "Senate") {
             var member = members[i]; var icspr = member[2];
             var state = member[5];
-            if (states[state]) { 
+            if (states[state]) {
                 states[state].push(member);
             } else {
                 states[state] = [member];
@@ -188,7 +188,7 @@ function senate_seat_groups(members) {
         for (let j=groupA_indices.length-1; j>= 0 ; j--) {
             state.splice(groupA_indices[j], 1);
         }
-        // sort by reverse time served(last vote - first vote) 
+        // sort by reverse time served(last vote - first vote)
         groupA.sort((b, a) => (Number(a[23])-Number(a[22]))-(Number(b[23])-Number(b[22])));
         state.sort((b, a) => (Number(a[23])-Number(a[22]))-(Number(b[23])-Number(b[22])));
         seat_groups.push(groupA);
@@ -204,8 +204,8 @@ function senate_seat_groups(members) {
     return seat_groups;
 }
 
-/* 
-  Returns: map, { [icspr]: { "member": table row, "seat": seat } } 
+/*
+  Returns: map, { [icspr]: { "member": table row, "seat": seat } }
 */
 function assign_seats(seat_groups, chamber_seats) {
     var result = {};
@@ -214,7 +214,7 @@ function assign_seats(seat_groups, chamber_seats) {
         var group = seat_groups[i];
         for (var j=0; j<group.length; j++) {
             var mem = group[j];
-            result[mem[2]] = { 
+            result[mem[2]] = {
                 member: mem,
                 seat: chamber_seats[seat_i],
             }
@@ -228,7 +228,7 @@ function init_chamber(which_chamber, rollcalls, votes, members) {
     var chamber = { which: which_chamber,
                     vote: 2
                 };
-    
+
     if (which_chamber==HOUSE) {
         var seat_groups = house_seat_groups(members, chamber_seats);
     } else {
@@ -240,10 +240,10 @@ function init_chamber(which_chamber, rollcalls, votes, members) {
     chamber.members = assign_seats(seat_groups, chamber.seats);
 
     chamber.votes = filter_chamber(votes, which_chamber);
-    
+
     chamber.rollcalls = filter_chamber(rollcalls, which_chamber);
 
-    return chamber; 
+    return chamber;
 }
 
 function draw_chamber(chamber) {
@@ -303,7 +303,7 @@ const vote_codes = {
     3: "yea", // Announced Yea
     4: "nay", // Announced Nay
     5: "nay", // Paired Nay
-    6: "nay", // Nay 
+    6: "nay", // Nay
     7: "skip", // Present (some Congreses)
     8: "skip", // Present (some Congresses)
     9: "skip", // Not Voting(Abstention)
@@ -375,7 +375,7 @@ function update_label(rollcall, vote_cmp) {
             const yea_breakdown = document.querySelector("#yea-breakdown");
             yea_breakdown.innerHTML = text;
         } else {
-            const nay_breakdown = document.querySelector("#nay-breakdown"); 
+            const nay_breakdown = document.querySelector("#nay-breakdown");
             nay_breakdown.innerHTML = text;
         }
     }
@@ -388,13 +388,13 @@ function update_label(rollcall, vote_cmp) {
 }
 
 function load_vote(chamber, rollnum) {
-    /* 
+    /*
        Sometimes a member is not listed at all on a vote, so we assign ids to
        every seat based on members' first and last votes(I still don't have
        their definitive start and end dates). However, if a member missed the
        *first few* or *last few* votes of their term, they can't be found and
        their seat will be listed as "unknown member".
-  
+
        All of this means we have to loop through votes, members, and seats here
        to get all the information we need.
 
@@ -410,7 +410,7 @@ function load_vote(chamber, rollnum) {
             var icspr = Math.floor(Number(vote[3])).toString();
             var member = chamber.members[icspr];
             if (!member) {
-                // Sometimes a president's vote is listed as a vote 
+                // Sometimes a president's vote is listed as a vote
                 // in one of the chambers.
                 i += 1;
                 continue;
@@ -429,9 +429,10 @@ function load_vote(chamber, rollnum) {
         }
         var seat = member.seat;
         if (seat) {
-            var party_code = member.member[6]; 
+            var party_code = member.member[6];
             var vote_code = icspr_votes[icspr] ? vote_codes[icspr_votes[icspr]] : vote_codes[100];
-            var fill = vote_colors[vote_code][party_code] ? vote_colors[vote_code][party_code] : vote_colors[vote_code][328];
+            var fill = vote_colors[vote_code][party_code] ? vote_colors[vote_code][party_code]
+                : vote_colors[vote_code][328];
             if (vote_cmp[vote_code][party_code]) {
                 vote_cmp[vote_code][party_code] += 1;
             } else {
@@ -455,7 +456,7 @@ function load_vote(chamber, rollnum) {
         }
     }
     const rc = chamber.rollcalls[rollnum-1];
-    update_label(rc, vote_cmp); 
+    update_label(rc, vote_cmp);
 }
 
 function rollcall_matches(row, query) {
@@ -602,7 +603,7 @@ function expand_button(button, vote_n) {
     // table.scrollTo(0, button.offsetTop);
     const row = st.selected.rollcalls[vote_n - 1];
     const voteview = document.createElement("a");
-    const vote_code = "R" 
+    const vote_code = "R"
                       + (st.selected.which===HOUSE ? "H"  : "S")
                       + ("00" + st.congress_selector.value).slice(-3)
                       + ("000" + row[2]).slice(-4);
@@ -622,10 +623,9 @@ function unexpand_button(button) {
     const vote_n = Number(button.getAttribute("vote-number"));
     const row = st.selected.rollcalls[vote_n - 1];
     button.innerHTML = row[2].toString() + ". "
-                        + (row[13].trim().length ?  "<span style='color: black;'>" + row[13].trim() + "</span><br>" : "")
-                        + (row[15].trim().length ? row[15].trim() + "<br>" : "" )
-                        + " <span style='color: #666666;'>" + row[16] + "</span>";
-
+                       + (row[13].trim().length ?  "<span style='color: black;'>" + row[13].trim() + "</span><br>" : "")
+                       + (row[15].trim().length ? row[15].trim() + "<br>" : (row[17].trim().length ? row[17].trim() + "<br>" : "") )
+                       + " <span style='color: #666666;'>" + row[16] + "</span>";
 }
 
 function voteClicked(event) {
@@ -831,7 +831,7 @@ document.addEventListener("mousedown", function(event) {
 }, false);
 
 
-/* 
+/*
 Refs:
 [1] https://stackoverflow.com/a/14991797/3137916
 */
