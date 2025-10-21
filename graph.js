@@ -513,6 +513,15 @@ function fromSVGcoords(x, y)
     return [x*x_scale, y*y_scale]
 }
 
+function close_popup() {
+    st.over_seat.setAttribute("stroke-width", "1");
+    st.over_seat.setAttribute("stroke", "#000");
+    st.over_seat = null;
+    const popup = document.getElementById("member-popup");
+    popup.setAttribute("persist", "false");
+    popup.style.visibility = "hidden";
+}
+
 function show_member_popup(seat_el, persist) {
     if (st.over_seat) {
         st.over_seat.setAttribute("stroke-width", "1");
@@ -553,7 +562,7 @@ function show_member_popup(seat_el, persist) {
 // This handles mouse moves for the whole document. That way it can remove the popup when necessary
 // even if the move is outside the chamber rect.
 function chamberMouseMove(event) {
-    const elem = document.elementFromPoint(event.clientX, event.clientY);
+    const elem = event.target;
     const popup = document.querySelector("#member-popup");
     if (elem.tagName === "circle" && elem.getAttribute("class") == "seat") {
         const elem_r = Number(elem.getAttribute("r"));
@@ -562,11 +571,7 @@ function chamberMouseMove(event) {
         }
     } else if (elem !== popup) {
         if (st.over_seat && popup.getAttribute("persist")!=="true") {
-            st.over_seat.setAttribute("stroke-width", "1");
-            st.over_seat.setAttribute("stroke", "#000");
-            st.over_seat = null;
-            popup.setAttribute("persist", "false");
-            popup.style.visibility = "hidden";
+            close_popup();
         }
     }
 }
@@ -584,11 +589,7 @@ function chamber_mousedown(event) {
                 return;
             }
         }
-        st.over_seat.setAttribute("stroke-width", "1");
-        st.over_seat.setAttribute("stroke", "#000");
-        st.over_seat = null;
-        popup.setAttribute("persist", "false");
-        popup.style.visibility = "hidden";
+        close_popup();
     }
 }
 
@@ -741,7 +742,6 @@ function search_members(ev)
 function search_rollcalls(ev)
 {
     const query = ev.target.value;
-    console.log(`searching query ${query} !query: ${!query}`);
     rollcall_table(st.selected.rollcalls, st.selected.which, query);
 }
 
@@ -751,7 +751,6 @@ function search_members_input_keydown(ev) {
     let next_sel_i = -1;
     if (ev.key === "Enter") {
         if (sel_i && sel_i.length > 0) {
-            console.log(sel_i);
             member_search_result_chosen(results_box.children[Number(sel_i)]);
         }
     } else if (ev.key == "ArrowDown") {
@@ -786,6 +785,9 @@ function setup_search_bars()
 
 
 function congress_main(rollcalls_str, votes_str, members_str, congress_n) {
+    if (st.over_seat) {
+        close_popup();
+    }
     const rollcalls = parseCSV(rollcalls_str);
     st.rollcalls = rollcalls;
     const votes = parseCSV(votes_str);
