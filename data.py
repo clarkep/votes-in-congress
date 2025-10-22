@@ -18,7 +18,7 @@ def findFL(congress_n):
     next(r2)
     for row in r2:
         icspr = str(int(float(row[3])))
-        try: 
+        try:
             member = members[icspr]
         except:
             print("Congress {} failed: members {} not found".format(congress_n, icspr))
@@ -68,7 +68,7 @@ def split_members_and_votes():
     r1 = csv.reader(f1)
     member_header = next(r1)
     for row in r1:
-        all_members[row[2]] = row 
+        all_members[row[2]] = row
         congress = int(row[0])
         if len(member_sep) > congress-1:
             member_sep[congress-1].append(row)
@@ -77,7 +77,7 @@ def split_members_and_votes():
             member_sep.append([member_header, row])
             member_sep_ic.append({ row[2]: row })
 
-    f2 = open(votes_fn, mode="r", encoding="utf-8") 
+    f2 = open(votes_fn, mode="r", encoding="utf-8")
     r2 = csv.reader(f2)
     vote_header = next(r2)
     votes_sep = []
@@ -91,7 +91,7 @@ def split_members_and_votes():
             votes_sep[congress-1].append(row)
         else:
             votes_sep.append([vote_header, row])
-        
+
         if icspr not in member_sep_ic[congress-1]:
             print("member {} ({}) not listed for congress {}. Checking all...".format(icspr, row[1], congress), end="")
             if icspr in all_members:

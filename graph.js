@@ -1,8 +1,12 @@
+// state
 var st = {
     congress_selector: null,
     chamber_svg: null,
+    // xx raw data, mostly for debugging
     rollcalls: null,
     votes: null,
+    members: null,
+    // processed: filtered and containing seat assignments
     house: null,
     senate: null,
     selected: null,
@@ -11,6 +15,116 @@ var st = {
     over_seat: null,
     cur_button: null,
 };
+
+const HOUSE = 0;
+const SENATE = 1;
+const chamber_str = {
+    [HOUSE]: "House",
+    [SENATE]: "Senate",
+}
+
+const vote_codes = {
+    0: "not_member", // Not a member when vote was taken
+    1: "yea", // Yea
+    2: "yea", // Paired Yea
+    3: "yea", // Announced Yea
+    4: "nay", // Announced Nay
+    5: "nay", // Paired Nay
+    6: "nay", // Nay
+    7: "skip", // Present (some Congreses)
+    8: "skip", // Present (some Congresses)
+    9: "skip", // Not Voting(Abstention)
+    100: "skip" // No entry in vote database
+};
+
+const vote_colors = {
+    yea: {
+        100: "#4000ff",
+        200: "#ff0030",
+        328: "#40ff00",
+    },
+    nay: {
+        100: "#d3deff",
+        200: "#ffd8e9",
+        328: "#d3ffde",
+
+    },
+    skip: {
+        100: "#888888",
+        200: "#888888",
+        328: "#888888",
+    },
+};
+
+const party_short = {
+    100: "D",
+    200: "R",
+    328: "I",
+};
+
+// rollcall columns
+const RC = {
+    congress: 0,
+    chamber: 1,
+    rollnumber: 2,
+    date: 3,
+    session: 4,
+    clerk_rollnumber: 5,
+    yea_count: 6,
+    nay_count: 7,
+    nominate_mid_1: 8,
+    nominate_mid_2: 9,
+    nominate_spread_1: 10,
+    nominate_spread_2: 11,
+    nominate_log_likelihood: 12,
+    bill_number: 13,
+    vote_result: 14,
+    vote_desc: 15,
+    vote_question: 16,
+    dtl_desc: 17,
+};
+
+// vote columns
+const VT = {
+    congress: 0,
+    chamber: 1,
+    rollnumber: 2,
+    icspr: 3,
+    cast_code: 4,
+    prob: 5,
+};
+
+// member columns
+const MEM = {
+    congress: 0,
+    chamber: 1,
+    icspr: 2,
+    state: 3,
+    district_code: 4,
+    state: 5,
+    party_code: 6,
+    occupancy: 7,
+    last_means: 8,
+    bioname: 9,
+    bioguide_id: 10,
+    born: 11,
+    died: 12,
+    nominate_dim1: 13,
+    nominate_dim2: 14,
+    nominate_log_likelihood: 15,
+    nominate_geo_mean_probability: 16,
+    nominate_number_of_votes: 17,
+    nominate_number_of_errors: 18,
+    conditional: 19,
+    nokken_pool_dim1: 20,
+    nokken_pool_dim2: 21,
+    // TODO
+    start_date: 22,
+    end_date: 23
+};
+
+
+/************************************** Utility ***************************************************/
 
 // [1]
 function parseCSV(str) {
@@ -54,25 +168,21 @@ function xy_in_rect(x, y, rect) {
     return x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom;
 }
 
-const HOUSE = 0;
-const SENATE = 1;
-const chamber_str = {
-    [HOUSE]: "House",
-    [SENATE]: "Senate",
-}
+/************************************** Chamber ***************************************************/
 
 function filter_chamber(table, which_chamber) {
     var result = []
     for (var i=0; i<table.length; i++) {
         var row = table[i];
-        if (row[1] === chamber_str[which_chamber]) {
+        // chamber is column 1 for all row types(rollcalls, votes, and members)
+        if (row[MEM.chamber] === chamber_str[which_chamber]) {
             result.push(row);
         }
     }
     return result;
 }
 
-// Returns: sorted array of svg elements
+// Returns: sorted array of svg elements in the proper layout, but not assigned
 function chamber_seats(which_chamber, how_many) {
     var svg = document.querySelector("#chamber");
     svg.setAttribute("viewBox", "0 0 800 450");
@@ -80,14 +190,14 @@ function chamber_seats(which_chamber, how_many) {
     const svgHeight = 450;
     if (which_chamber == HOUSE) {
         var rows = [ 22, 25, 31, 34, 38, 41, 43, 45, 47, 53, 56];
-        var c_r = 8;
-        var d_r = 21;
-        var r = 160;
+        var c_r = 7.5;
+        var d_r = 22;
+        var r = 130;
     } else {
         var rows = [ 16, 18, 20, 22, 24 ];
         c_r = 14;
         var d_r = 40;
-        var r = 190;
+        var r = 170;
     }
     // My: a y coordinate that points up. Transformed with svgHeight-My
     const origin_x = svgWidth / 2; const origin_My = 22 + c_r;
@@ -104,7 +214,7 @@ function chamber_seats(which_chamber, how_many) {
             circle.setAttribute("r", c_r.toString());
             circle.setAttribute("fill", "#888888");
             circle.setAttribute("stroke", "black");
-                circle.setAttribute("class", "seat");
+            circle.setAttribute("class", "seat");
             // Spots are ordered by angle, with row as a tie breaker
             circle.order = Math.floor(theta)*rows.length + i;
             circle.setAttribute("order", circle.order.toString());
@@ -120,7 +230,7 @@ function chamber_seats(which_chamber, how_many) {
     return seats;
 }
 
-/* TODO: move seat assignment to pre-processing? */
+/* TODO: move seat assignment to pre-processing */
 
 function house_seat_groups(members) {
     var districts = {};
@@ -130,7 +240,7 @@ function house_seat_groups(members) {
             var member = members[i];
             if (member[4] == 0) {
                 // non voting
-                console.assert(["VI", "PR", "MP", "GU", "DC", "AS"].includes(member[5]));
+                console.assert(["VI", "PR", "MP", "GU", "DC", "AS"].includes(member[MEM.state]));
                 continue;
             } else {
                 var district_code = member[3]+member[4];
@@ -139,7 +249,9 @@ function house_seat_groups(members) {
                     group = districts[district_code];
                     group.push(member);
                     // sort by reverse time served(last vote - first vote)
-                    group.sort((b, a) => (Number(a[23])-Number(a[22]))-(Number(b[23])-Number(b[22])));
+                    group.sort((b, a) =>
+                        (Number(a[MEM.end_date])-Number(a[MEM.start_date]))
+                        -(Number(b[MEM.end_date])-Number(b[MEM.start_date])));
                 } else {
                     group = [member];
                     districts[district_code] = group;
@@ -148,9 +260,8 @@ function house_seat_groups(members) {
             }
         }
     }
-    const nominate_col = 13
     // sort by reverse ideology score(conservative -> liberal) of the longest serving member
-    seat_groups.sort((b, a) => a[0][nominate_col]-b[0][nominate_col]);
+    seat_groups.sort((b, a) => a[0][MEM.nominate_dim1]-b[0][MEM.nominate_dim1]);
     return seat_groups;
 }
 
@@ -158,8 +269,9 @@ function senate_seat_groups(members) {
     var states = {};
     for (var i=0; i<members.length; i++) {
         if (members[i][1] === "Senate") {
-            var member = members[i]; var icspr = member[2];
-            var state = member[5];
+            var member = members[i];
+            var icspr = member[MEM.icspr];
+            var state = member[MEM.state];
             if (states[state]) {
                 states[state].push(member);
             } else {
@@ -172,14 +284,14 @@ function senate_seat_groups(members) {
     for (var i=0; i<states_arr.length; i++) {
         var state = states_arr[i];
         // sort by start date
-        state.sort((b, a) => (Number(b[22])-Number(a[22])));
+        state.sort((b, a) => (Number(b[MEM.start_date])-Number(a[MEM.start_date])));
         var groupA = [state[0]];
         var groupA_indices = [0];
         var groupA_i = 0;
         // Add senators who start immediately after the first senator finishes
         // to the same seat group, "group A". Group B is everyone not in group A.
         for (let j=1; j<state.length; j++) {
-            if (Number(state[j][22])>=Number(groupA[groupA_i][23])) {
+            if (Number(state[j][MEM.start_date])>=Number(groupA[groupA_i][MEM.end_date])) {
                 groupA.push(state[j]);
                 groupA_indices.push(j);
                 groupA_i += 1;
@@ -189,18 +301,21 @@ function senate_seat_groups(members) {
             state.splice(groupA_indices[j], 1);
         }
         // sort by reverse time served(last vote - first vote)
-        groupA.sort((b, a) => (Number(a[23])-Number(a[22]))-(Number(b[23])-Number(b[22])));
-        state.sort((b, a) => (Number(a[23])-Number(a[22]))-(Number(b[23])-Number(b[22])));
+        groupA.sort((b, a) =>
+            (Number(a[MEM.end_date])-Number(a[MEM.start_date]))
+            -(Number(b[MEM.end_date])-Number(b[MEM.start_date])));
+        state.sort((b, a) =>
+            (Number(a[MEM.end_date])-Number(a[MEM.start_date]))
+            -(Number(b[MEM.end_date])-Number(b[MEM.start_date])));
         seat_groups.push(groupA);
         if (state.length) {
             seat_groups.push(state);
         } else {
             // PA only had one senator in the 2nd Congress
-            console.log(`No second senator found in ${groupA[0][5]}`);
+            console.log(`No second senator found in ${groupA[0][MEM.state]}`);
         }
     }
-    const nominate_col = 13;
-    seat_groups.sort((b, a) => a[0][nominate_col]-b[0][nominate_col]);
+    seat_groups.sort((b, a) => a[0][MEM.nominate_dim1]-b[0][MEM.nominate_dim1]);
     return seat_groups;
 }
 
@@ -214,7 +329,7 @@ function assign_seats(seat_groups, chamber_seats) {
         var group = seat_groups[i];
         for (var j=0; j<group.length; j++) {
             var mem = group[j];
-            result[mem[2]] = {
+            result[mem[MEM.icspr]] = {
                 member: mem,
                 seat: chamber_seats[seat_i],
             }
@@ -230,9 +345,9 @@ function init_chamber(which_chamber, rollcalls, votes, members) {
                 };
 
     if (which_chamber==HOUSE) {
-        var seat_groups = house_seat_groups(members, chamber_seats);
+        var seat_groups = house_seat_groups(members);
     } else {
-        var seat_groups = senate_seat_groups(members, chamber_seats);
+        var seat_groups = senate_seat_groups(members);
     }
 
     chamber.seats = chamber_seats(which_chamber, seat_groups.length);
@@ -248,7 +363,7 @@ function init_chamber(which_chamber, rollcalls, votes, members) {
 
 function draw_chamber(chamber) {
     var svg = document.querySelector("#chamber");
-    document.addEventListener("mousemove", chamberMouseMove);
+    document.addEventListener("mousemove", chamber_mousemove);
     document.addEventListener("mousedown", chamber_mousedown);
     svg.innerHTML = "";
     for (var i=0; i<chamber.seats.length; i++) {
@@ -256,26 +371,62 @@ function draw_chamber(chamber) {
     }
 }
 
+function dist(x1, y1, x2, y2) {
+    return ((x2-x1)**2 + (y2-y1)**2)**0.5;
+}
+
+function close_popup() {
+    st.over_seat.setAttribute("stroke-width", "1");
+    st.over_seat.setAttribute("stroke", "#000");
+    st.over_seat = null;
+    const popup = document.getElementById("member-popup");
+    popup.setAttribute("persist", "false");
+    popup.style.visibility = "hidden";
+}
+
+function show_member_popup(seat_el, persist) {
+    if (st.over_seat) {
+        st.over_seat.setAttribute("stroke-width", "1");
+        st.over_seat.setAttribute("stroke", "#000");
+    }
+    const rect = seat_el.getBoundingClientRect();
+    const elem_x = rect.x;
+    const elem_y = rect.y;
+    const no_hit_r = 0;
+    const popup = document.querySelector("#member-popup");
+    const parent_rect = popup.parentNode.getBoundingClientRect();
+    const parent_x = parent_rect.x;
+    const parent_y = parent_rect.y;
+    popup.style.visibility = "visible";
+    const r = (rect.width / 2);
+    const off_x = (r - 2) * Math.cos(Math.PI / 3);
+    const off_y = (r - 2) * Math.sin(Math.PI / 3);
+    popup.style.left = Math.round(elem_x + r + off_x - parent_x)+"px";
+    popup.style.top = Math.round(elem_y + r - off_y - popup.clientHeight-parent_y)+"px";
+    const icspr = seat_el.getAttribute("icspr");
+    const member = st.selected.members[icspr];
+    if (persist) {
+        popup.setAttribute("persist", "true");
+        seat_el.setAttribute("stroke", "#0ff");
+        seat_el.setAttribute("stroke-width", "1");
+    } else {
+        popup.setAttribute("persist", "false");
+        seat_el.setAttribute("stroke", "#000");
+    }
+    if (!member) { // XXX see load_vote
+        popup.innerHTML = "Unknown member";
+    } else {
+        popup.innerHTML = member.member[MEM.bioname];
+    }
+    st.over_seat = seat_el;
+}
+
 function reset_vote(chamber) {
     for (var i=0; i<chamber.seats.length; i++) {
         chamber.seats[i].setAttribute("icspr", "-1");
         chamber.seats[i].setAttribute("fill", "#888888");
     }
-}
-
-function reposition_label(event) {
-    const all = document.querySelector("#vote-summary");
-    const normal_w = 800;
-    const normal_size = 0.85;
-    const rect = st.chamber_svg.getBoundingClientRect();
-    const svg_w = rect.width;
-    const svg_h = rect.height;
-    all.style.fontSize = (normal_size * (svg_w/normal_w)).toString() + "rem";
-    // XXX get the new width given updated fontSize
-    const w = all.clientWidth;
-    all.style.top = (0.80 * svg_h).toString() + "px";
-    all.style.left = (0.5 * svg_w - 0.5*w).toString() + "px";
-}
+``}
 
 function result_short(result) {
     if (result.slice(-9)==="Agreed to") {
@@ -294,45 +445,6 @@ function result_short(result) {
         return "Sustained";
     }
     return null;
-}
-
-const vote_codes = {
-    0: "not_member", // Not a member when vote was taken
-    1: "yea", // Yea
-    2: "yea", // Paired Yea
-    3: "yea", // Announced Yea
-    4: "nay", // Announced Nay
-    5: "nay", // Paired Nay
-    6: "nay", // Nay
-    7: "skip", // Present (some Congreses)
-    8: "skip", // Present (some Congresses)
-    9: "skip", // Not Voting(Abstention)
-    100: "skip" // No entry in vote database
-};
-
-const vote_colors = {
-    yea: {
-        100: "#4000ff",
-        200: "#ff0030",
-        328: "#40ff00",
-    },
-    nay: {
-        100: "#d3deff",
-        200: "#ffd8e9",
-        328: "#d3ffde",
-
-    },
-    skip: {
-        100: "#888888",
-        200: "#888888",
-        328: "#888888",
-    },
-};
-
-const party_short = {
-    100: "D",
-    200: "R",
-    328: "I",
 }
 
 function update_label(rollcall, vote_cmp) {
@@ -405,9 +517,9 @@ function load_vote(chamber, rollnum) {
     var icspr_votes = {};
     // Collect all the explicitly listed votes
     for (var i=0; i< chamber.votes.length; i++) {
-        if (chamber.votes[i][2] == rollnum) {
+        if (chamber.votes[i][VT.rollnumber] == rollnum) {
             var vote = chamber.votes[i];
-            var icspr = Math.floor(Number(vote[3])).toString();
+            var icspr = Math.floor(Number(vote[VT.icspr])).toString();
             var member = chamber.members[icspr];
             if (!member) {
                 // Sometimes a president's vote is listed as a vote
@@ -416,20 +528,20 @@ function load_vote(chamber, rollnum) {
                 continue;
             }
             // Congress 116 (at least) stores vote codes as string floats, e.g. "6.0"
-            icspr_votes[icspr] = Math.floor(Number(vote[4]));
+            icspr_votes[icspr] = Math.floor(Number(vote[VT.cast_code]));
         }
     }
     var vote_cmp = { yea: { }, nay: { }, skip: { }};
     var misses = 0;
     // Find members who were in office for this vote but might not be explicitly listed
     for(const [icspr, member] of Object.entries(chamber.members)) {
-        if (rollnum < member.member[22]|| rollnum > member.member[23]) {
+        if (rollnum < member.member[MEM.start_date]|| rollnum > member.member[MEM.end_date]) {
             // presumably not in office at the time of the vote
             continue;
         }
         var seat = member.seat;
         if (seat) {
-            var party_code = member.member[6];
+            var party_code = member.member[MEM.party_code];
             var vote_code = icspr_votes[icspr] ? vote_codes[icspr_votes[icspr]] : vote_codes[100];
             var fill = vote_colors[vote_code][party_code] ? vote_colors[vote_code][party_code]
                 : vote_colors[vote_code][328];
@@ -459,109 +571,9 @@ function load_vote(chamber, rollnum) {
     update_label(rc, vote_cmp);
 }
 
-function rollcall_matches(row, query) {
-    if (!query) {
-        return true;
-    }
-    const search_text = row[13] + row[15] + row[16] + row[17];
-    return search_text.toLowerCase().includes(query.toLowerCase());
-}
-
-function rollcall_table(rollcalls, which_chamber, query) {
-    const chamber_str = which_chamber === HOUSE ? "House" : "Senate";
-    const tbl = document.querySelector("#rollcalls");
-    tbl.innerHTML = "";
-    for (var i=0; i<rollcalls.length; i++) {
-        var row = rollcalls[i];
-        if (row[1]===chamber_str && rollcall_matches(row, query)) {
-            var tr = tbl.appendChild(document.createElement("tr"));
-            // var td = tr.appendChild(document.createElement("td"));
-            var button = tr.appendChild(document.createElement("div"));
-            button.style.width = "100%";
-            button.setAttribute("class", "vote-button");
-            button.setAttribute("vote-number", row[2].toString());
-            button.addEventListener("click", voteClicked);
-            button.innerHTML = row[2].toString() + ". "
-                               + (row[13].trim().length ?  "<span style='color: black;'>" + row[13].trim() + "</span><br>" : "")
-                               + (row[15].trim().length ? row[15].trim() + "<br>" : (row[17].trim().length ? row[17].trim() + "<br>" : "") )
-                               + " <span style='color: #666666;'>" + row[16] + "</span>";
-        }
-    }
-}
-
-function dist(x1, y1, x2, y2) {
-    return ((x2-x1)**2 + (y2-y1)**2)**0.5;
-}
-
-function chamberSelected(event) {
-    const select_chamber = document.querySelector("#select-chamber");
-    var chamber = select_chamber.value=="House" ? st.house : st.senate;
-    st.cur_button = null;
-    st.selected = chamber;
-    draw_chamber(chamber);
-    // xx load current search-box query?
-    rollcall_table(chamber.rollcalls, chamber.which, "");
-    load_vote(chamber, chamber.vote);
-}
-
-function fromSVGcoords(x, y)
-{
-    const svg_w = 800;
-    const svg_h = 450;
-    const x_scale = st.chamber_svg.width.baseVal.value / svg_w;
-    const y_scale = st.chamber_svg.height.baseVal.value / svg_h;
-    return [x*x_scale, y*y_scale]
-}
-
-function close_popup() {
-    st.over_seat.setAttribute("stroke-width", "1");
-    st.over_seat.setAttribute("stroke", "#000");
-    st.over_seat = null;
-    const popup = document.getElementById("member-popup");
-    popup.setAttribute("persist", "false");
-    popup.style.visibility = "hidden";
-}
-
-function show_member_popup(seat_el, persist) {
-    if (st.over_seat) {
-        st.over_seat.setAttribute("stroke-width", "1");
-        st.over_seat.setAttribute("stroke", "#000");
-    }
-    const rect = seat_el.getBoundingClientRect();
-    const elem_x = rect.x;
-    const elem_y = rect.y;
-    const no_hit_r = 0;
-    const popup = document.querySelector("#member-popup");
-    const parent_rect = popup.parentNode.getBoundingClientRect();
-    const parent_x = parent_rect.x;
-    const parent_y = parent_rect.y;
-    popup.style.visibility = "visible";
-    const r = (rect.width / 2);
-    const off_x = (r - 2) * Math.cos(Math.PI / 3);
-    const off_y = (r - 2) * Math.sin(Math.PI / 3);
-    popup.style.left = Math.round(elem_x + r + off_x - parent_x)+"px";
-    popup.style.top = Math.round(elem_y + r - off_y - popup.clientHeight-parent_y)+"px";
-    const icspr = seat_el.getAttribute("icspr");
-    const member = st.selected.members[icspr];
-    if (persist) {
-        popup.setAttribute("persist", "true");
-        seat_el.setAttribute("stroke", "#0ff");
-        seat_el.setAttribute("stroke-width", "1");
-    } else {
-        popup.setAttribute("persist", "false");
-        seat_el.setAttribute("stroke", "#000");
-    }
-    if (!member) { // XXX see load_vote
-        popup.innerHTML = "Unknown member";
-    } else {
-        popup.innerHTML = member.member[9];
-    }
-    st.over_seat = seat_el;
-}
-
 // This handles mouse moves for the whole document. That way it can remove the popup when necessary
 // even if the move is outside the chamber rect.
-function chamberMouseMove(event) {
+function chamber_mousemove(event) {
     const elem = event.target;
     const popup = document.querySelector("#member-popup");
     if (elem.tagName === "circle" && elem.getAttribute("class") == "seat") {
@@ -593,79 +605,18 @@ function chamber_mousedown(event) {
     }
 }
 
-function expand_button(button, vote_n) {
-    var h = button.clientHeight;
-    button.parentElement.style.borderWidth = "2px";
-    button.parentElement.style.borderColor = "#888888";
-    button.style.height = (h + 30).toString() + "px";
-    button.style.backgroundColor = "#ffffff";
-    button.style.userSelect = "auto";
-    // const table = document.querySelector("#rollcalls");
-    // table.scrollTo(0, button.offsetTop);
-    const row = st.selected.rollcalls[vote_n - 1];
-    const voteview = document.createElement("a");
-    const vote_code = "R"
-                      + (st.selected.which===HOUSE ? "H"  : "S")
-                      + ("00" + st.congress_selector.value).slice(-3)
-                      + ("000" + row[2]).slice(-4);
-    const url = "https://voteview.com/rollcall/" + vote_code;
-    voteview.setAttribute("href", url);
-    voteview.setAttribute("class", "voteview-link");
-    voteview.innerHTML = "voteview>"
-    button.appendChild(voteview);
-}
-
-function unexpand_button(button) {
-    button.parentElement.style.borderWidth = "";
-    button.parentElement.style.borderColor = "";
-    button.style.height = "";
-    button.style.backgroundColor = "";
-    button.style.userSelect = "";
-    const vote_n = Number(button.getAttribute("vote-number"));
-    const row = st.selected.rollcalls[vote_n - 1];
-    button.innerHTML = row[2].toString() + ". "
-                       + (row[13].trim().length ?  "<span style='color: black;'>" + row[13].trim() + "</span><br>" : "")
-                       + (row[15].trim().length ? row[15].trim() + "<br>" : (row[17].trim().length ? row[17].trim() + "<br>" : "") )
-                       + " <span style='color: #666666;'>" + row[16] + "</span>";
-}
-
-function voteClicked(event) {
-    const button = event.currentTarget;
-    reset_vote(st.selected);
-    if (st.cur_button) {
-        unexpand_button(st.cur_button);
-    }
-    var vote_n = Number(button.getAttribute("vote-number"));
-    st.selected.vote = vote_n;
-    st.cur_button = button;
-    load_vote(st.selected, vote_n);
-    expand_button(button, vote_n);
-}
-
-function congressSelected(event) {
-    /* TODO: this caused a bug, but make sure all state is set up right. */
-    st.cur_button = null;
-
-    const congress_n = Number(event.target.value);
-    load_congress(congress_n);
-}
-
-function setup_congress_selector(initial_congress_n) {
-    const selector = document.querySelector("#select-congress")
-    const n_congresses = 118;
-    for (let i=1; i<n_congresses+1; i++) {
-        const c = document.createElement("option");
-        c.setAttribute("value", i.toString());
-        const normal_endings = [ "th", "st", "nd", "rd", "th", "th", "th", "th", "th", "th"];
-        const ordinal = i.toString() + (((i%100) >= 10 && (i%100) < 20 ) ? "th" : normal_endings[i % 10]);
-        const start_year = 1789 + 2*(i-1);
-        const end_year = start_year + 2;
-        c.innerHTML = ordinal + " Congress (" + start_year.toString() + "-" + end_year.toString() + ")";
-        selector.appendChild(c);
-    }
-    st.congress_selector = selector;
-    selector.value = initial_congress_n.toString();
-    selector.addEventListener("change", congressSelected);
+function reposition_label(event) {
+    const all = document.querySelector("#vote-summary");
+    const normal_w = 800;
+    const normal_size = 0.85;
+    const rect = st.chamber_svg.getBoundingClientRect();
+    const svg_w = rect.width;
+    const svg_h = rect.height;
+    all.style.fontSize = (normal_size * (svg_w/normal_w)).toString() + "rem";
+    // XXX get the new width given updated fontSize
+    const w = all.clientWidth;
+    all.style.top = (0.80 * svg_h).toString() + "px";
+    all.style.left = (0.5 * svg_w - 0.5*w).toString() + "px";
 }
 
 function my_scroll_into_view(el, container)
@@ -739,12 +690,6 @@ function search_members(ev)
     }
 }
 
-function search_rollcalls(ev)
-{
-    const query = ev.target.value;
-    rollcall_table(st.selected.rollcalls, st.selected.which, query);
-}
-
 function search_members_input_keydown(ev) {
     const results_box = document.getElementById("search-members-results");
     const sel_i = results_box.getAttribute("sel-index");
@@ -766,6 +711,133 @@ function search_members_input_keydown(ev) {
         select_member_result(results_box.children[next_sel_i]);
         ev.preventDefault();
     }
+}
+
+/************************************** Rollcall table ********************************************/
+
+function rollcall_matches(row, query) {
+    if (!query) {
+        return true;
+    }
+    const search_text = row[13] + row[15] + row[16] + row[17];
+    return search_text.toLowerCase().includes(query.toLowerCase());
+}
+
+function rollcall_table(rollcalls, which_chamber, query) {
+    const chamber_str = which_chamber === HOUSE ? "House" : "Senate";
+    const tbl = document.querySelector("#rollcalls");
+    tbl.innerHTML = "";
+    for (var i=0; i<rollcalls.length; i++) {
+        var row = rollcalls[i];
+        if (row[RC.chamber]===chamber_str && rollcall_matches(row, query)) {
+            var tr = tbl.appendChild(document.createElement("tr"));
+            // var td = tr.appendChild(document.createElement("td"));
+            var button = tr.appendChild(document.createElement("div"));
+            button.style.width = "100%";
+            button.setAttribute("class", "vote-button");
+            button.setAttribute("vote-number", row[RC.rollnumber].toString());
+            button.addEventListener("click", voteClicked);
+            button.innerHTML = row[RC.rollnumber].toString() + ". "
+                               + (row[RC.bill_number].trim().length ?  "<span style='color: black;'>" + row[RC.bill_number].trim() + "</span><br>" : "")
+                               + (row[RC.vote_desc].trim().length ? row[RC.vote_desc].trim() + "<br>" : (row[RC.dtl_desc].trim().length ? row[RC.dtl_desc].trim() + "<br>" : "") )
+                               + " <span style='color: #666666;'>" + row[RC.vote_question] + "</span>";
+        }
+    }
+}
+
+function expand_button(button, vote_n) {
+    var h = button.clientHeight;
+    button.parentElement.style.borderWidth = "2px";
+    button.parentElement.style.borderColor = "#888888";
+    button.style.height = (h + 30).toString() + "px";
+    button.style.backgroundColor = "#ffffff";
+    button.style.userSelect = "auto";
+    // const table = document.querySelector("#rollcalls");
+    // table.scrollTo(0, button.offsetTop);
+    const row = st.selected.rollcalls[vote_n - 1];
+    const voteview = document.createElement("a");
+    const vote_code = "R"
+                      + (st.selected.which===HOUSE ? "H"  : "S")
+                      + ("00" + st.congress_selector.value).slice(-3)
+                      + ("000" + row[2]).slice(-4);
+    const url = "https://voteview.com/rollcall/" + vote_code;
+    voteview.setAttribute("href", url);
+    voteview.setAttribute("target", "_blank");
+    voteview.setAttribute("class", "voteview-link");
+    voteview.innerHTML = "voteview>"
+    button.appendChild(voteview);
+}
+
+function unexpand_button(button) {
+    button.parentElement.style.borderWidth = "";
+    button.parentElement.style.borderColor = "";
+    button.style.height = "";
+    button.style.backgroundColor = "";
+    button.style.userSelect = "";
+    const vote_n = Number(button.getAttribute("vote-number"));
+    const row = st.selected.rollcalls[vote_n - 1];
+    button.innerHTML = row[RC.rollnumber].toString() + ". "
+                       + (row[RC.bill_number].trim().length ?  "<span style='color: black;'>" + row[RC.bill_number].trim() + "</span><br>" : "")
+                       + (row[RC.vote_desc].trim().length ? row[RC.vote_desc].trim() + "<br>" : (row[RC.dtl_desc].trim().length ? row[RC.dtl_desc].trim() + "<br>" : "") )
+                       + " <span style='color: #666666;'>" + row[RC.vote_question] + "</span>";
+}
+
+function voteClicked(event) {
+    const button = event.currentTarget;
+    reset_vote(st.selected);
+    if (st.cur_button) {
+        unexpand_button(st.cur_button);
+    }
+    var vote_n = Number(button.getAttribute("vote-number"));
+    st.selected.vote = vote_n;
+    st.cur_button = button;
+    load_vote(st.selected, vote_n);
+    expand_button(button, vote_n);
+}
+
+/************************************** Selections/main *******************************************/
+
+function chamberSelected(event) {
+    const select_chamber = document.querySelector("#select-chamber");
+    var chamber = select_chamber.value=="House" ? st.house : st.senate;
+    st.cur_button = null;
+    st.selected = chamber;
+    draw_chamber(chamber);
+    // xx load current search-box query?
+    rollcall_table(chamber.rollcalls, chamber.which, "");
+    load_vote(chamber, chamber.vote);
+}
+
+function congressSelected(event) {
+    /* TODO: this caused a bug, but make sure all state is set up right. */
+    st.cur_button = null;
+
+    const congress_n = Number(event.target.value);
+    load_congress(congress_n);
+}
+
+function setup_congress_selector(initial_congress_n) {
+    const selector = document.querySelector("#select-congress")
+    const n_congresses = 118;
+    for (let i=1; i<n_congresses+1; i++) {
+        const c = document.createElement("option");
+        c.setAttribute("value", i.toString());
+        const normal_endings = [ "th", "st", "nd", "rd", "th", "th", "th", "th", "th", "th"];
+        const ordinal = i.toString() + (((i%100) >= 10 && (i%100) < 20 ) ? "th" : normal_endings[i % 10]);
+        const start_year = 1789 + 2*(i-1);
+        const end_year = start_year + 2;
+        c.innerHTML = ordinal + " Congress (" + start_year.toString() + "-" + end_year.toString() + ")";
+        selector.appendChild(c);
+    }
+    st.congress_selector = selector;
+    selector.value = initial_congress_n.toString();
+    selector.addEventListener("change", congressSelected);
+}
+
+function search_rollcalls(ev)
+{
+    const query = ev.target.value;
+    rollcall_table(st.selected.rollcalls, st.selected.which, query);
 }
 
 function setup_search_bars()
@@ -793,6 +865,7 @@ function congress_main(rollcalls_str, votes_str, members_str, congress_n) {
     const votes = parseCSV(votes_str);
     st.votes = votes;
     const members = parseCSV(members_str);
+    st.members = members;
 
     st.chamber_svg = document.querySelector("#chamber");
     st.house = init_chamber(HOUSE, rollcalls, votes, members);
