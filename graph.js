@@ -1,4 +1,4 @@
-// state
+// app state
 var st = {
     congress_selector: null,
     chamber_svg: null,
@@ -99,7 +99,7 @@ const MEM = {
     congress: 0,
     chamber: 1,
     icspr: 2,
-    state: 3,
+    state_icspr: 3,
     district_code: 4,
     state: 5,
     party_code: 6,
@@ -118,9 +118,8 @@ const MEM = {
     conditional: 19,
     nokken_pool_dim1: 20,
     nokken_pool_dim2: 21,
-    // TODO
-    start_date: 22,
-    end_date: 23
+    first_vote: 22,
+    last_vote: 23
 };
 
 
@@ -181,7 +180,6 @@ function filter_chamber(table, which_chamber) {
     }
     return result;
 }
-
 // Returns: sorted array of svg elements in the proper layout, but not assigned
 function chamber_seats(which_chamber, how_many) {
     var svg = document.querySelector("#chamber");
@@ -243,15 +241,15 @@ function house_seat_groups(members) {
                 console.assert(["VI", "PR", "MP", "GU", "DC", "AS"].includes(member[MEM.state]));
                 continue;
             } else {
-                var district_code = member[3]+member[4];
+                var district_code = member[MEM.state]+member[MEM.district_code].toString();
                 var group;
                 if (districts[district_code]) {
                     group = districts[district_code];
                     group.push(member);
                     // sort by reverse time served(last vote - first vote)
                     group.sort((b, a) =>
-                        (Number(a[MEM.end_date])-Number(a[MEM.start_date]))
-                        -(Number(b[MEM.end_date])-Number(b[MEM.start_date])));
+                        (Number(a[MEM.last_vote])-Number(a[MEM.first_vote]))
+                        -(Number(b[MEM.last_vote])-Number(b[MEM.first_vote])));
                 } else {
                     group = [member];
                     districts[district_code] = group;
@@ -284,14 +282,14 @@ function senate_seat_groups(members) {
     for (var i=0; i<states_arr.length; i++) {
         var state = states_arr[i];
         // sort by start date
-        state.sort((b, a) => (Number(b[MEM.start_date])-Number(a[MEM.start_date])));
+        state.sort((b, a) => (Number(b[MEM.first_vote])-Number(a[MEM.first_vote])));
         var groupA = [state[0]];
         var groupA_indices = [0];
         var groupA_i = 0;
         // Add senators who start immediately after the first senator finishes
         // to the same seat group, "group A". Group B is everyone not in group A.
         for (let j=1; j<state.length; j++) {
-            if (Number(state[j][MEM.start_date])>=Number(groupA[groupA_i][MEM.end_date])) {
+            if (Number(state[j][MEM.first_vote])>=Number(groupA[groupA_i][MEM.last_vote])) {
                 groupA.push(state[j]);
                 groupA_indices.push(j);
                 groupA_i += 1;
@@ -302,11 +300,11 @@ function senate_seat_groups(members) {
         }
         // sort by reverse time served(last vote - first vote)
         groupA.sort((b, a) =>
-            (Number(a[MEM.end_date])-Number(a[MEM.start_date]))
-            -(Number(b[MEM.end_date])-Number(b[MEM.start_date])));
+            (Number(a[MEM.last_vote])-Number(a[MEM.first_vote]))
+            -(Number(b[MEM.last_vote])-Number(b[MEM.first_vote])));
         state.sort((b, a) =>
-            (Number(a[MEM.end_date])-Number(a[MEM.start_date]))
-            -(Number(b[MEM.end_date])-Number(b[MEM.start_date])));
+            (Number(a[MEM.last_vote])-Number(a[MEM.first_vote]))
+            -(Number(b[MEM.last_vote])-Number(b[MEM.first_vote])));
         seat_groups.push(groupA);
         if (state.length) {
             seat_groups.push(state);
@@ -465,7 +463,7 @@ function update_label(rollcall, vote_cmp) {
         var text;
         if (good_guys.length) {
             good_guys.sort((e1, e2)=>(e2[1] - e1[1]));
-            text = "<small>(";
+            text = "(";
             var n_others = 0; // Unknown party, hence "Other"
             for (let j=0; j<good_guys.length; j++) {
                 let e = good_guys[j];
@@ -476,9 +474,9 @@ function update_label(rollcall, vote_cmp) {
                 }
             }
             if (!n_others) {
-                text = text.slice(0, -2) + ")</small>";
+                text = text.slice(0, -2) + ")";
             } else {
-                text = text + "O: " + n_others.toString() + ")</small>";
+                text = text + "O: " + n_others.toString() + ")";
             }
         } else {
             text = "";
@@ -535,7 +533,7 @@ function load_vote(chamber, rollnum) {
     var misses = 0;
     // Find members who were in office for this vote but might not be explicitly listed
     for(const [icspr, member] of Object.entries(chamber.members)) {
-        if (rollnum < member.member[MEM.start_date]|| rollnum > member.member[MEM.end_date]) {
+        if (rollnum < member.member[MEM.first_vote]|| rollnum > member.member[MEM.last_vote]) {
             // presumably not in office at the time of the vote
             continue;
         }
@@ -798,6 +796,9 @@ function unexpand_button(button) {
 
 function voteClicked(event) {
     const button = event.currentTarget;
+    if (st.cur_button === button) {
+        return;
+    }
     reset_vote(st.selected);
     if (st.cur_button) {
         unexpand_button(st.cur_button);
@@ -903,7 +904,7 @@ function congress_main(rollcalls_str, votes_str, members_str, congress_n) {
 function load_congress(congress_n) {
     const rollcallsPromise = fetch(`data/HS${congress_n}_rollcalls.csv` ).then(response => response.text());
     const votesPromise = fetch(`data/HS${congress_n}_votes.csv`).then(response => response.text());
-    const membersPromise = fetch(`data/HS${congress_n}_members.csv`).then(response => response.text());
+    const membersPromise = fetch(`data/HS${congress_n}_members_v2.csv`).then(response => response.text());
 
     Promise.all([rollcallsPromise, votesPromise, membersPromise]).then(values => congress_main(...values, congress_n));
 }
@@ -913,8 +914,8 @@ function handle_resize(event) {
     const rollcalls_box = document.getElementById("rollcalls-box");
     const w2 = 1720;
     const w1 = 1300;
-    const chamber_p = .64;
-    const rollcalls_p = .18;
+    const chamber_p = .62;
+    const rollcalls_p = .20;
     const both_p = chamber_p + rollcalls_p;
     const padding_p = 1 - chamber_p - rollcalls_p;
     const gap = 10;

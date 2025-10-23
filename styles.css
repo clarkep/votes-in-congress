@@ -33,7 +33,7 @@ header {
 
 #chamber-box {
   position: relative;
-  width: 64vw;
+  width: 62vw;
   height: 36vw;
 /*
   min-width: 800px;
@@ -60,7 +60,7 @@ header {
   position: absolute;
   height: 25px;
   top: -26px;
-  right: -3px;
+  right: -2px;
 }
 
 #search-members-input {
@@ -120,7 +120,7 @@ header {
 
 .search-members-result {
   height: 30px;
-  text-color: #000;
+  color: #000;
   border-top: 1px solid black;
 }
 
@@ -131,23 +131,8 @@ header {
   border: 2px solid rgb(140 140 140);
 }
 
-#member-popup {
-  visibility: hidden;
-  z-index: 1;
+#legend {
   position: absolute;
-  left: 0px;
-  top: 0px;
-  width: 200px;
-  height: 50px;
-  font-size: 0.85rem;
-  background-color: #ffffff;
-  border: 1px solid black;
-}
-
-#vote-name {
-  font-weight: bold;
-  max-height: 2.8rem;
-  overflow-y: hidden;
 }
 
 /*
@@ -173,11 +158,33 @@ header {
 
 #vote-result {
   font-style: italic;
-  font-size: 1.0rem;
+  font-size: 1.2rem;
+}
+
+#not-voting-label {
+  font-size: 1.2rem;
 }
 
 .vote-count {
   font-size:1.20rem;
+}
+
+.vote-breakdown {
+  font-size:.9rem;
+}
+
+#member-popup {
+  visibility: hidden;
+  z-index: 1;
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 200px;
+  height: 50px;
+  padding: .1rem .1rem .1rem .1rem;
+  font-size: 0.85rem;
+  background-color: #ffffff;
+  border: 1px solid black;
 }
 
 #rollcalls-box {
@@ -187,7 +194,7 @@ header {
   min-height: 450px;
 */
   /* reset by handle_resize: this is the value for large widths  */
-  width: 18vw;
+  width: 20vw;
   height: 36vw;
 
 }
@@ -204,19 +211,24 @@ header {
   font-size: 0.8rem;
   letter-spacing: 1px;
 
+  box-sizing: border-box;
   border: 2px solid rgb(140 140 140);
   border-collapse: collapse;
   overflow-y: scroll;
   overflow-x: hidden;
   table-layout: fixed;
+  /* Ensure the scrollbar does not overlay row content */
+  /* padding-right: 10px; /* fallback for browsers without scrollbar-gutter */
+  /* scrollbar-gutter: stable; /* reserve space for scrollbar */
   scrollbar-width: 10px;
 }
 
 .vote-button {
+  box-sizing: border-box;
   background-color: #ffffff;
   text-align: center;
-  box-sizing: border-box;
-  padding: 2px 5px 2px 5px;
+  /* extra right padding for scrollbar */
+  padding: 2px 15px 2px 5px;
   border: 0px;
   width: 100%;
   user-select: none;
