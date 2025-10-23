@@ -496,7 +496,7 @@ function update_label(rollcall, vote_cmp) {
     const not_voting_label = document.querySelector("#not-voting-label");
     not_voting_label.innerHTML = "Not Voting: " + n_not_voting;
 
-    reposition_label(null);
+    reposition_label();
 }
 
 function load_vote(chamber, rollnum) {
@@ -605,7 +605,7 @@ function chamber_mousedown(event) {
     }
 }
 
-function reposition_label(event) {
+function reposition_label() {
     const all = document.querySelector("#vote-summary");
     const normal_w = 800;
     const normal_size = 0.85;
@@ -617,6 +617,20 @@ function reposition_label(event) {
     const w = all.clientWidth;
     all.style.top = (0.80 * svg_h).toString() + "px";
     all.style.left = (0.5 * svg_w - 0.5*w).toString() + "px";
+}
+
+function resize_chamber() {
+    const search_members_input = document.getElementById("search-members-input");
+    const remain = document.getElementById("chamber-box").getBoundingClientRect().right
+        - document.getElementById("select-chamber").getBoundingClientRect().right;
+    console.log(remain);
+    if (remain < 300) {
+        search_members_input.style.width = Math.round(remain).toString() + "px";
+    } else {
+        search_members_input.style.width = "300px";
+    }
+
+    reposition_label();
 }
 
 function my_scroll_into_view(el, container)
@@ -884,8 +898,6 @@ function congress_main(rollcalls_str, votes_str, members_str, congress_n) {
     if (!st.congress_selector) { // first run
         setup_congress_selector(congress_n);
     }
-
-    window.onresize = reposition_label;
 }
 
 function load_congress(congress_n) {
@@ -895,6 +907,38 @@ function load_congress(congress_n) {
 
     Promise.all([rollcallsPromise, votesPromise, membersPromise]).then(values => congress_main(...values, congress_n));
 }
+
+function handle_resize(event) {
+    const chamber_box = document.getElementById("chamber-box");
+    const rollcalls_box = document.getElementById("rollcalls-box");
+    const w2 = 1720;
+    const w1 = 1300;
+    const chamber_p = .64;
+    const rollcalls_p = .18;
+    const both_p = chamber_p + rollcalls_p;
+    const padding_p = 1 - chamber_p - rollcalls_p;
+    const gap = 10;
+    const wprime = window.innerWidth - gap;
+    if (wprime > w2) {
+        // full padding above w2
+        chamber_box.style.width = "64vw";
+        rollcalls_box.style.width = "18vw";
+    } else if (wprime > w1) {
+        // padding scales down between w2 and w1
+        const padding = ((wprime - w1) / (w2 - w1)) * padding_p * window.innerWidth;
+        const chamber_w = (wprime - padding) * (chamber_p / both_p);
+        chamber_box.style.width = Math.round(chamber_w).toString() + "px";
+        const rollcalls_w = (wprime - padding) * (rollcalls_p / both_p);
+        rollcalls_box.style.width = Math.round(rollcalls_w).toString() + "px";
+    } else {
+        // no padding below w1
+        chamber_box.style.width = Math.round((chamber_p/both_p)*wprime).toString() + "px";
+        rollcalls_box.style.width = Math.round((rollcalls_p/both_p)*wprime).toString() + "px";
+    }
+    resize_chamber();
+}
+
+window.addEventListener("resize", handle_resize);
 
 load_congress(116);
 

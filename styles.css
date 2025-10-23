@@ -68,6 +68,7 @@ header {
   top: 0px;
   right: 0px;
   height: 100%;
+  /* set by resize_chamber when there is not enough room */
   width: 300px;
   padding-right: 16px;
 }
@@ -185,8 +186,8 @@ header {
   min-width: 280px;
   min-height: 450px;
 */
+  /* reset by handle_resize: this is the value for large widths  */
   width: 18vw;
-  max-width: 350px;
   height: 36vw;
 
 }
