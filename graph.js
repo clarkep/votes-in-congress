@@ -10,8 +10,6 @@ var st = {
     house: null,
     senate: null,
     selected: null,
-    house_vote: 2,
-    senate_vote: 2,
     prevent_hover: false,
     over_seat: null,
     cur_button: null,
@@ -27,10 +25,10 @@ const chamber_str = {
 const vote_codes = {
     0: "not_member", // Not a member when vote was taken
     1: "yea", // Yea
-    2: "yea", // Paired Yea
-    3: "yea", // Announced Yea
-    4: "nay", // Announced Nay
-    5: "nay", // Paired Nay
+    2: "skip", // Paired Yea (part of a non-voting pair with a member on the other side)
+    3: "skip", // Announced Yea (it was announced that this member would have voted yea if present)
+    4: "skip", // Announced Nay
+    5: "skip", // Paired Nay
     6: "nay", // Nay
     7: "skip", // Present (some Congreses)
     8: "skip", // Present (some Congresses)
@@ -217,7 +215,7 @@ function chamber_seats(which_chamber, how_many) {
             // Spots are ordered by angle, with row as a tie breaker
             circle.order = Math.floor(theta)*rows.length + i;
             circle.setAttribute("order", circle.order.toString());
-            // XXX see load_vote
+            // XXX see load_rollcall
             circle.setAttribute("icspr", "-1");
             seats.push(circle);
             theta += 180. / (n-1);
@@ -237,11 +235,14 @@ function house_seat_groups(members) {
     for (var i=0; i<members.length; i++) {
         if (members[i][1] === "House") {
             var member = members[i];
-            if (member[4] == 0) {
+            if (member[MEM.district_code] == 0) {
                 // non voting
                 console.assert(["VI", "PR", "MP", "GU", "DC", "AS"].includes(member[MEM.state]));
                 continue;
             } else {
+                if (["VI", "PR", "MP", "GU", "DC", "AS"].includes(member[MEM.state])) {
+                    continue;
+                }
                 var district_code = member[MEM.state]+member[MEM.district_code].toString();
                 var group;
                 if (districts[district_code]) {
@@ -340,7 +341,7 @@ function assign_seats(seat_groups, chamber_seats) {
 
 function init_chamber(which_chamber, rollcalls, votes, members) {
     var chamber = { which: which_chamber,
-                    vote: 2
+                    rollcall: 2
                 };
 
     if (which_chamber==HOUSE) {
@@ -412,7 +413,7 @@ function show_member_popup(seat_el, persist) {
         popup.setAttribute("persist", "false");
         seat_el.setAttribute("stroke", "#000");
     }
-    if (!member) { // XXX see load_vote
+    if (!member) { // XXX see load_rollcall
         popup.innerHTML = "Unknown member";
     } else {
         popup.innerHTML = member.member[MEM.bioname];
@@ -448,14 +449,14 @@ function result_short(result) {
 
 function update_label(rollcall, vote_cmp) {
     const count = document.querySelector("#vote-result");
-    var result_str = result_short(rollcall[14]);
-    result_str = result_str ? result_str : rollcall[14];
+    var result_str = result_short(rollcall[RC.vote_result]);
+    result_str = result_str ? result_str : rollcall[RC.vote_result];
     const result = document.querySelector("#vote-result");
     result.innerHTML = result_str;
     const yea_count = document.querySelector("#yea-count");
-    yea_count.innerHTML = rollcall[6];
+    yea_count.innerHTML = rollcall[RC.yea_count];
     const nay_count = document.querySelector("#nay-count");
-    nay_count.innerHTML = rollcall[7];
+    nay_count.innerHTML = rollcall[RC.nay_count];
 
     const sides = [Object.entries(vote_cmp.yea), Object.entries(vote_cmp.nay)];
     // Breakdowns of the sides
@@ -498,7 +499,7 @@ function update_label(rollcall, vote_cmp) {
     reposition_label();
 }
 
-function load_vote(chamber, rollnum) {
+function load_rollcall(chamber, rollnum) {
     /*
        Sometimes a member is not listed at all on a vote, so we assign ids to
        every seat based on members' first and last votes(I still don't have
@@ -511,7 +512,6 @@ function load_vote(chamber, rollnum) {
 
        TODO: move a lot of this to pre-processing?
     */
-    console.log("loading vote ", rollnum);
     const chamber_str = chamber.which == HOUSE ? "House" : "Senate";
     var icspr_votes = {};
     // Collect all the explicitly listed votes
@@ -552,7 +552,6 @@ function load_vote(chamber, rollnum) {
             seat.setAttribute("fill", fill);
             seat.setAttribute("icspr", icspr);
         } else {
-            console.log("miss", member);
             misses += 1;
         }
     }
@@ -622,7 +621,6 @@ function resize_chamber() {
     const search_members_input = document.getElementById("search-members-input");
     const remain = document.getElementById("chamber-box").getBoundingClientRect().right
         - document.getElementById("select-chamber").getBoundingClientRect().right;
-    console.log(remain);
     if (remain < 300) {
         search_members_input.style.width = Math.round(remain).toString() + "px";
     } else {
@@ -631,6 +629,8 @@ function resize_chamber() {
 
     reposition_label();
 }
+
+/******** Member search **********/
 
 function my_scroll_into_view(el, container)
 {
@@ -749,7 +749,7 @@ function rollcall_table(rollcalls, which_chamber, query) {
             button.style.width = "100%";
             button.setAttribute("class", "vote-button");
             button.setAttribute("vote-number", row[RC.rollnumber].toString());
-            button.addEventListener("click", voteClicked);
+            button.addEventListener("click", rollcall_clicked);
             button.innerHTML = row[RC.rollnumber].toString() + ". "
                                + (row[RC.bill_number].trim().length ?  "<span style='color: black;'>" + row[RC.bill_number].trim() + "</span><br>" : "")
                                + (row[RC.vote_desc].trim().length ? row[RC.vote_desc].trim() + "<br>" : (row[RC.dtl_desc].trim().length ? row[RC.dtl_desc].trim() + "<br>" : "") )
@@ -795,7 +795,7 @@ function unexpand_button(button) {
                        + " <span style='color: #666666;'>" + row[RC.vote_question] + "</span>";
 }
 
-function voteClicked(event) {
+function rollcall_clicked(event) {
     const button = event.currentTarget;
     if (st.cur_button === button) {
         return;
@@ -805,24 +805,24 @@ function voteClicked(event) {
         unexpand_button(st.cur_button);
     }
     var vote_n = Number(button.getAttribute("vote-number"));
-    st.selected.vote = vote_n;
+    st.selected.rollcall = vote_n;
     st.cur_button = button;
-    load_vote(st.selected, vote_n);
+    load_rollcall(st.selected, vote_n);
     expand_button(button, vote_n);
 }
 
 /************************************** Selections/main *******************************************/
 
 /* All of this is to prevent hover from being active when chamber/congress selectors are open */
-function chamberCongressSelectorOpened(event) {
+function chamber_or_congress_selector_opened(event) {
     st.prevent_hover = true;
 }
 
-function chamberCongressSelectorClosed(event) {
+function chamber_or_congress_selector_closed(event) {
     st.prevent_hover = false;
 }
 
-function chamberSelected(event) {
+function chamber_selected(event) {
     const select_chamber = document.querySelector("#select-chamber");
     var chamber = select_chamber.value=="House" ? st.house : st.senate;
     st.cur_button = null;
@@ -830,7 +830,7 @@ function chamberSelected(event) {
     draw_chamber(chamber);
     // xx load current search-box query?
     rollcall_table(chamber.rollcalls, chamber.which, "");
-    load_vote(chamber, chamber.vote);
+    load_rollcall(chamber, chamber.rollcall);
 }
 
 function congressSelected(event) {
@@ -857,8 +857,8 @@ function setup_congress_selector(initial_congress_n) {
     st.congress_selector = selector;
     selector.value = initial_congress_n.toString();
     selector.addEventListener("change", congressSelected);
-    selector.addEventListener("focus", chamberCongressSelectorOpened);
-    selector.addEventListener("blur", chamberCongressSelectorClosed);
+    selector.addEventListener("focus", chamber_or_congress_selector_opened);
+    selector.addEventListener("blur", chamber_or_congress_selector_closed);
 }
 
 function search_rollcalls(ev)
@@ -899,14 +899,14 @@ function congress_main(rollcalls_str, votes_str, members_str, congress_n) {
     st.senate = init_chamber(SENATE, rollcalls, votes, members);
 
     // Load whichever chamber is selected, on first run this is the House
-    chamberSelected(null);
+    chamber_selected(null);
 
     const select_chamber = document.querySelector("#select-chamber");
-    select_chamber.addEventListener("change", chamberSelected);
-    select_chamber.addEventListener("focus", chamberCongressSelectorOpened);
-    select_chamber.addEventListener("blur", chamberCongressSelectorClosed);
+    select_chamber.addEventListener("change", chamber_selected);
+    select_chamber.addEventListener("focus", chamber_or_congress_selector_opened);
+    select_chamber.addEventListener("blur", chamber_or_congress_selector_closed);
 
-    load_vote(st.selected, st.selected.vote);
+    load_rollcall(st.selected, st.selected.rollcall);
 
     setup_search_bars();
 
