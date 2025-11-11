@@ -12,6 +12,7 @@ var st = {
     selected: null,
     house_vote: 2,
     senate_vote: 2,
+    prevent_hover: false,
     over_seat: null,
     cur_button: null,
 };
@@ -576,7 +577,7 @@ function chamber_mousemove(event) {
     const popup = document.querySelector("#member-popup");
     if (elem.tagName === "circle" && elem.getAttribute("class") == "seat") {
         const elem_r = Number(elem.getAttribute("r"));
-        if (!(elem == st.over_seat) && popup.getAttribute("persist")!=="true") {
+        if (!(elem == st.over_seat) && popup.getAttribute("persist")!=="true" && !st.prevent_hover) {
             show_member_popup(elem, false);
         }
     } else if (elem !== popup) {
@@ -812,6 +813,15 @@ function voteClicked(event) {
 
 /************************************** Selections/main *******************************************/
 
+/* All of this is to prevent hover from being active when chamber/congress selectors are open */
+function chamberCongressSelectorOpened(event) {
+    st.prevent_hover = true;
+}
+
+function chamberCongressSelectorClosed(event) {
+    st.prevent_hover = false;
+}
+
 function chamberSelected(event) {
     const select_chamber = document.querySelector("#select-chamber");
     var chamber = select_chamber.value=="House" ? st.house : st.senate;
@@ -847,6 +857,8 @@ function setup_congress_selector(initial_congress_n) {
     st.congress_selector = selector;
     selector.value = initial_congress_n.toString();
     selector.addEventListener("change", congressSelected);
+    selector.addEventListener("focus", chamberCongressSelectorOpened);
+    selector.addEventListener("blur", chamberCongressSelectorClosed);
 }
 
 function search_rollcalls(ev)
@@ -891,6 +903,8 @@ function congress_main(rollcalls_str, votes_str, members_str, congress_n) {
 
     const select_chamber = document.querySelector("#select-chamber");
     select_chamber.addEventListener("change", chamberSelected);
+    select_chamber.addEventListener("focus", chamberCongressSelectorOpened);
+    select_chamber.addEventListener("blur", chamberCongressSelectorClosed);
 
     load_vote(st.selected, st.selected.vote);
 
