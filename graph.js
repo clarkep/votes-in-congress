@@ -25,7 +25,7 @@ const chamber_str = {
 const vote_codes = {
     0: "not_member", // Not a member when vote was taken
     1: "yea", // Yea
-    2: "skip", // Paired Yea (part of a non-voting pair with a member on the other side)
+    2: "skip", // Paired Yea (part of a non-voting pair with an opposing member)
     3: "skip", // Announced Yea (it was announced that this member would have voted yea if present)
     4: "skip", // Announced Nay
     5: "skip", // Paired Nay
@@ -236,10 +236,10 @@ function house_seat_groups(members) {
         if (members[i][1] === "House") {
             var member = members[i];
             if (member[MEM.district_code] == 0) {
-                // non voting
                 console.assert(["VI", "PR", "MP", "GU", "DC", "AS"].includes(member[MEM.state]));
                 continue;
             } else {
+                // non voting territories
                 if (["VI", "PR", "MP", "GU", "DC", "AS"].includes(member[MEM.state])) {
                     continue;
                 }
@@ -249,9 +249,9 @@ function house_seat_groups(members) {
                     group = districts[district_code];
                     group.push(member);
                     // sort by reverse time served(last vote - first vote)
-                    group.sort((b, a) =>
-                        (Number(a[MEM.last_vote])-Number(a[MEM.first_vote]))
-                        -(Number(b[MEM.last_vote])-Number(b[MEM.first_vote])));
+                    group.sort((a, b) =>
+                        (Number(b[MEM.last_vote])-Number(b[MEM.first_vote]))
+                        -(Number(a[MEM.last_vote])-Number(a[MEM.first_vote])));
                 } else {
                     group = [member];
                     districts[district_code] = group;
@@ -261,7 +261,7 @@ function house_seat_groups(members) {
         }
     }
     // sort by reverse ideology score(conservative -> liberal) of the longest serving member
-    seat_groups.sort((b, a) => a[0][MEM.nominate_dim1]-b[0][MEM.nominate_dim1]);
+    seat_groups.sort((a, b) => b[0][MEM.nominate_dim1]-a[0][MEM.nominate_dim1]);
     return seat_groups;
 }
 
@@ -315,12 +315,12 @@ function senate_seat_groups(members) {
             console.log(`No second senator found in ${groupA[0][MEM.state]}`);
         }
     }
-    seat_groups.sort((b, a) => a[0][MEM.nominate_dim1]-b[0][MEM.nominate_dim1]);
+    seat_groups.sort((a, b) => b[0][MEM.nominate_dim1]-a[0][MEM.nominate_dim1]);
     return seat_groups;
 }
 
 /*
-  Returns: map, { [icspr]: { "member": table row, "seat": seat } }
+  Returns: map in the form { [icspr]: { "member": table row, "seat": seat } }
 */
 function assign_seats(seat_groups, chamber_seats) {
     var result = {};
@@ -678,7 +678,9 @@ function search_members(ev)
         results_box.innerHTML = "";
         let i = 0;
         for(const [icspr, member] of Object.entries(st.selected.members)) {
-            if (member.member[9].toLowerCase().includes(query.toLowerCase())) {
+            if (member.member[MEM.bioname].toLowerCase().includes(query.toLowerCase())
+                && st.selected.rollcall >= Number(member.member[MEM.first_vote])
+                && st.selected.rollcall <= Number(member.member[MEM.last_vote])) {
                 const r = document.createElement("div");
                 r.setAttribute("class", "search-members-result");
                 r.setAttribute("icspr", member.member[2]);
