@@ -61,6 +61,12 @@ const party_short = {
     328: "I",
 };
 
+const party_order_scores = {
+    100: 10,
+    328: 20,
+    200: 30,
+}
+
 // rollcall columns
 const RC = {
     congress: 0,
@@ -212,7 +218,7 @@ function chamber_seats(which_chamber, how_many) {
             circle.setAttribute("fill", "#888888");
             circle.setAttribute("stroke", "black");
             circle.setAttribute("class", "seat");
-            // Spots are ordered by angle, with row as a tie breaker
+            // XX Spots are ordered by angle, with row as a tie breaker
             circle.order = Math.floor(theta)*rows.length + i;
             circle.setAttribute("order", circle.order.toString());
             // XXX see load_rollcall
@@ -228,6 +234,12 @@ function chamber_seats(which_chamber, how_many) {
 }
 
 /* TODO: move seat assignment to pre-processing */
+
+function chamber_order_score(mem) {
+    let party_score = party_order_scores[mem[MEM.party_code]];
+    party_score = party_score ? party_score : 0;
+    return party_score + Number(mem[MEM.nominate_dim1]);
+}
 
 function house_seat_groups(members) {
     var districts = {};
@@ -260,8 +272,7 @@ function house_seat_groups(members) {
             }
         }
     }
-    // sort by reverse ideology score(conservative -> liberal) of the longest serving member
-    seat_groups.sort((a, b) => b[0][MEM.nominate_dim1]-a[0][MEM.nominate_dim1]);
+    seat_groups.sort((a, b) => chamber_order_score(b[0])-chamber_order_score(a[0]));
     return seat_groups;
 }
 
@@ -315,7 +326,7 @@ function senate_seat_groups(members) {
             console.log(`No second senator found in ${groupA[0][MEM.state]}`);
         }
     }
-    seat_groups.sort((a, b) => b[0][MEM.nominate_dim1]-a[0][MEM.nominate_dim1]);
+    seat_groups.sort((a, b) => chamber_order_score(b[0])-chamber_order_score(a[0]));
     return seat_groups;
 }
 
@@ -955,17 +966,23 @@ function handle_resize(event) {
     resize_chamber();
 }
 
-window.addEventListener("resize", handle_resize);
+function main() {
+    window.addEventListener("resize", handle_resize);
 
-load_congress(116);
+    load_congress(116);
 
-// prevent double click from annoyingly selecting text
-document.addEventListener("mousedown", function(event) {
-  if (event.detail > 1) {
-    event.preventDefault();
-  }
-}, false);
+    // prevent double click from annoyingly selecting text
+    document.addEventListener("mousedown", function(event) {
+      if (event.detail > 1) {
+        event.preventDefault();
+      }
+    }, false);
+}
 
+// do not run when imported from test harness
+if (typeof window !== 'undefined') {
+    main();
+}
 
 /*
 Refs:
