@@ -90,7 +90,8 @@ const MEM = {
     nokken_pool_dim1: 20,
     nokken_pool_dim2: 21,
     first_vote: 22,
-    last_vote: 23
+    last_vote: 23,
+    chamber_col_key: 24,
 };
 
 // rollcall columns
@@ -171,17 +172,6 @@ function xy_in_rect(x, y, rect) {
 
 /************************************** Chamber ***************************************************/
 
-function filter_chamber(table, which_chamber) {
-    var result = []
-    for (var i=0; i<table.length; i++) {
-        var row = table[i];
-        // chamber is column 1 for all row types(rollcalls, votes, and members)
-        if (row[MEM.chamber] === chamber_str[which_chamber]) {
-            result.push(row);
-        }
-    }
-    return result;
-}
 // Returns: sorted array of svg elements in the proper layout, but not assigned
 function chamber_seats(which_chamber, how_many) {
     let svg = document.querySelector("#chamber");
@@ -230,8 +220,6 @@ function chamber_seats(which_chamber, how_many) {
     seats.sort((a, b) => a.order - b.order)
     return seats;
 }
-
-/* TODO: move seat assignment to pre-processing */
 
 function chamber_order_score(mem) {
     let party_score = party_order_scores[mem[MEM.party_code]];
@@ -329,7 +317,7 @@ function senate_seat_groups(members) {
 }
 
 /*
-  Returns: map in the form { [icspr]: { "member": table row, "seat": seat } }
+  Returns: map in the form { [icspr]: seat }
 */
 function assign_seats(seat_groups, chamber_seats) {
     let result = {};
@@ -338,10 +326,7 @@ function assign_seats(seat_groups, chamber_seats) {
         let group = seat_groups[i];
         for (let j=0; j<group.length; j++) {
             let mem = group[j];
-            result[mem[MEM.icspr]] = {
-                member: mem,
-                seat: chamber_seats[seat_i],
-            }
+            result[mem[MEM.icspr]] = chamber_seats[seat_i];
         }
         seat_i += 1;
     }
@@ -362,11 +347,19 @@ function init_chamber(which_chamber, rollcalls, votes, members) {
 
     chamber.seats = chamber_seats(which_chamber, seat_groups.length);
 
-    chamber.members = assign_seats(seat_groups, chamber.seats);
+    chamber.members = members;
+    chamber.n_members = st.members.length;
 
-    chamber.votes = filter_chamber(votes, which_chamber);
+    chamber.icspr_to_member = {};
+    for (let i=0; i<members.length; i++) {
+        let mem = members[i];
+        chamber.icspr_to_member[mem[MEM.icspr]] = mem;
+    }
+    chamber.icspr_to_seat = assign_seats(seat_groups, chamber.seats);
 
-    chamber.rollcalls = filter_chamber(rollcalls, which_chamber);
+    chamber.votes = votes;
+
+    chamber.rollcalls = rollcalls;
 
     return chamber;
 }
@@ -414,7 +407,7 @@ function show_member_popup(seat_el, persist) {
     popup.style.left = Math.round(elem_x + r + off_x - parent_x)+"px";
     popup.style.top = Math.round(elem_y + r - off_y - popup.clientHeight-parent_y)+"px";
     const icspr = seat_el.getAttribute("icspr");
-    const member = st.chamber.members[icspr];
+    const member = st.chamber.icspr_to_member[icspr];
     if (persist) {
         popup.setAttribute("persist", "true");
         seat_el.setAttribute("stroke", "#0ff");
@@ -426,7 +419,7 @@ function show_member_popup(seat_el, persist) {
     if (!member) { // XXX see load_rollcall
         popup.innerHTML = "Vacant";
     } else {
-        popup.innerHTML = member.member[MEM.bioname];
+        popup.innerHTML = member[MEM.bioname];
     }
     st.over_seat = seat_el;
 }
@@ -515,41 +508,26 @@ function load_rollcall(chamber, rollnum) {
        every seat based on members' first and last votes(I still don't have
        their definitive start and end dates). However, if a member missed the
        *first few* or *last few* votes of their term, they can't be found and
-       their seat will be listed as "unknown member".
-
-       All of this means we have to loop through votes, members, and seats here
-       to get all the information we need.
-
-       TODO: move a lot of this to pre-processing?
+       their seat will be listed as "Vacant".
     */
+    const votes = chamber.votes;
+    const n_members = chamber.n_members;
+    console.log(`${n_members} in chamber table`);
     const chamber_str = chamber.which == HOUSE ? "House" : "Senate";
-    let icspr_votes = {};
-    // Collect all the explicitly listed votes
-    for (let i=0; i < chamber.votes.length; i++) {
-        if (chamber.votes[i][VT.rollnumber] == rollnum) {
-            let vote = chamber.votes[i];
-            let icspr = Math.floor(Number(vote[VT.icspr])).toString();
-            let member = chamber.members[icspr];
-            if (!member) {
-                // Sometimes a president's vote is listed as a vote
-                // in one of the chambers.
-                continue;
-            }
-            icspr_votes[icspr] = Math.floor(Number(vote[VT.cast_code]));
-        }
-    }
     let vote_cmp = { yea: { }, nay: { }, skip: { }};
     let misses = 0;
-    // Find members who were in office for this vote but might not be explicitly listed
-    for(const [icspr, member] of Object.entries(chamber.members)) {
-        if (rollnum < member.member[MEM.first_vote]|| rollnum > member.member[MEM.last_vote]) {
+    for(const member of chamber.members) {
+        icspr = member[MEM.icspr];
+        if (rollnum < member[MEM.first_vote]|| rollnum > member[MEM.last_vote]) {
             // presumably not in office at the time of the vote
             continue;
         }
-        let seat = member.seat;
+        let col_key = Number(member[MEM.chamber_col_key]);
+        let seat = chamber.icspr_to_seat[icspr];
         if (seat) {
-            let party_code = member.member[MEM.party_code];
-            let vote_code = icspr_votes[icspr] ? vote_codes[icspr_votes[icspr]] : vote_codes[100];
+            let party_code = member[MEM.party_code];
+            let vote = votes[(rollnum-1)*n_members+col_key];
+            let vote_code = vote ? vote_codes[vote] : vote_codes[100];
             let fill = vote_colors[vote_code][party_code] ? vote_colors[vote_code][party_code]
                 : vote_colors[vote_code][328];
             if (vote_cmp[vote_code][party_code]) {
@@ -563,9 +541,9 @@ function load_rollcall(chamber, rollnum) {
             misses += 1;
         }
     }
-    // Find seats that are still unaccounted for after step 2
+    // Find seats that are still unaccounted for
     for (let i=0; i<chamber.seats.length; i++) {
-        if (!chamber.members[chamber.seats[i].getAttribute("icspr")]) { // unknown member
+        if (!chamber.icspr_to_member[chamber.seats[i].getAttribute("icspr")]) { // unknown member
             if (vote_cmp.skip[328]) {
                 vote_cmp.skip[328] += 1;
             } else {
@@ -674,7 +652,7 @@ function member_search_result_chosen(el) {
     results_box.style.visibility = "hidden";
     */
 
-    show_member_popup(st.chamber.members[Number(el.getAttribute("icspr"))].seat, true);
+    show_member_popup(st.chamber.icspr_to_seat[Number(el.getAttribute("icspr"))], true);
 }
 
 function search_members(ev)
@@ -685,15 +663,15 @@ function search_members(ev)
     if (query) {
         results_box.innerHTML = "";
         let i = 0;
-        for(const [icspr, member] of Object.entries(st.chamber.members)) {
-            if (member.member[MEM.bioname].toLowerCase().includes(query.toLowerCase())
-                && st.chamber.rollcall >= Number(member.member[MEM.first_vote])
-                && st.chamber.rollcall <= Number(member.member[MEM.last_vote])) {
+        for(const member of st.chamber.members) {
+            if (member[MEM.bioname].toLowerCase().includes(query.toLowerCase())
+                && st.chamber.rollcall >= Number(member[MEM.first_vote])
+                && st.chamber.rollcall <= Number(member[MEM.last_vote])) {
                 const r = document.createElement("div");
                 r.setAttribute("class", "search-members-result");
-                r.setAttribute("icspr", member.member[2]);
+                r.setAttribute("icspr", member[MEM.icspr]);
                 r.setAttribute("i", i);
-                r.innerHTML = member.member[9];
+                r.innerHTML = member[MEM.bioname];
                 r.addEventListener("mouseenter", (e) => select_member_result(e.target));
                 r.addEventListener("mousedown", (e) => member_search_result_chosen(e.target));
                 results_box.appendChild(r);
@@ -760,9 +738,12 @@ function rollcall_table(rollcalls, which_chamber, query) {
             button.setAttribute("class", "vote-button");
             button.setAttribute("vote-number", row[RC.rollnumber].toString());
             button.addEventListener("click", rollcall_clicked);
+            const trimmed_billnum = row[RC.bill_number].trim();
+            const trimmed_desc = row[RC.vote_desc].trim();
+            const trimmed_dtl = row[RC.dtl_desc].trim();
             button.innerHTML = row[RC.rollnumber].toString() + ". "
-                               + (row[RC.bill_number].trim().length ?  "<span style='color: black;'>" + row[RC.bill_number].trim() + "</span><br>" : "")
-                               + (row[RC.vote_desc].trim().length ? row[RC.vote_desc].trim() + "<br>" : (row[RC.dtl_desc].trim().length ? row[RC.dtl_desc].trim() + "<br>" : "") )
+                               + (trimmed_billnum ?  "<span style='color: black;'>" + trimmed_billnum + "</span><br>" : "")
+                               + (trimmed_desc.length ? trimmed_desc + "<br>" : (trimmed_dtl ? trimmed_dtl + "<br>" : "") )
                                + " <span style='color: #666666;'>" + row[RC.vote_question] + "</span>";
         }
     }
@@ -799,9 +780,12 @@ function unexpand_button(button) {
     button.style.userSelect = "";
     const vote_n = Number(button.getAttribute("vote-number"));
     const row = st.chamber.rollcalls[vote_n - 1];
+    const trimmed_billnum = row[RC.bill_number].trim();
+    const trimmed_desc = row[RC.vote_desc].trim();
+    const trimmed_dtl = row[RC.dtl_desc].trim();
     button.innerHTML = row[RC.rollnumber].toString() + ". "
-                       + (row[RC.bill_number].trim().length ?  "<span style='color: black;'>" + row[RC.bill_number].trim() + "</span><br>" : "")
-                       + (row[RC.vote_desc].trim().length ? row[RC.vote_desc].trim() + "<br>" : (row[RC.dtl_desc].trim().length ? row[RC.dtl_desc].trim() + "<br>" : "") )
+                       + (trimmed_billnum ?  "<span style='color: black;'>" + trimmed_billnum + "</span><br>" : "")
+                       + (trimmed_desc.length ? trimmed_desc + "<br>" : (trimmed_dtl ? trimmed_dtl + "<br>" : "") )
                        + " <span style='color: #666666;'>" + row[RC.vote_question] + "</span>";
 }
 
@@ -837,7 +821,7 @@ function congress_or_chamber_selected(event) {
     const select_chamber = document.querySelector("#select-chamber");
     let chamber = select_chamber.value=="House" ? HOUSE : SENATE;
     st.cur_button = null;
-    load_congress(Number(select_congress.value), chamber);
+    fetch_congress_run_main(Number(select_congress.value), chamber);
 }
 
 function setup_congress_selector(initial_congress_n) {
@@ -882,25 +866,22 @@ function setup_search_bars()
 }
 
 
-function congress_main(rollcalls_str, votes_str, members_str, congress_n, chamber) {
+function congress_main(members_str, rollcalls_str, votes_buf, congress_n, chamber) {
     if (st.over_seat) {
         close_popup();
     }
 
     st.congress_n = congress_n;
-    const rollcalls = parseCSV(rollcalls_str);
-    st.rollcalls = rollcalls;
-    const votes = parseCSV(votes_str);
-    st.votes = votes;
-    const members = parseCSV(members_str);
-    st.members = members;
+    st.members = parseCSV(members_str);
+    st.members.splice(0, 1);
+    st.rollcalls = parseCSV(rollcalls_str);
+    st.rollcalls.splice(0, 1);
+    st.votes = new Uint8Array(votes_buf, 0, votes_buf.byteLength);
 
     st.chamber_svg = document.querySelector("#chamber");
-    st.chamber = init_chamber(chamber, rollcalls, votes, members);
-    // st.senate = init_chamber(SENATE, rollcalls, votes, members);
+    st.chamber = init_chamber(chamber, st.rollcalls, st.votes, st.members);
 
     // // Load whichever chamber is selected, on first run this is the House
-    // chamber_selected(null);
     draw_chamber(st.chamber);
     // xx load current search-box query?
     rollcall_table(st.chamber.rollcalls, st.chamber.which, "");
@@ -919,13 +900,13 @@ function congress_main(rollcalls_str, votes_str, members_str, congress_n, chambe
     }
 }
 
-function load_congress(congress_n, chamber) {
+function fetch_congress_run_main(congress_n, chamber) {
     const chamber_str = chamber == HOUSE ? "H" : "S";
-    const rollcallsPromise = fetch(`data/${chamber_str}${congress_n}_rollcalls.csv` ).then(response => response.text());
-    const votesPromise = fetch(`data/${chamber_str}${congress_n}_votes.csv`).then(response => response.text());
     const membersPromise = fetch(`data/${chamber_str}${congress_n}_members_v2.csv`).then(response => response.text());
+    const rollcallsPromise = fetch(`data/${chamber_str}${congress_n}_rollcalls.csv` ).then(response => response.text());
+    const votesPromise = fetch(`data/${chamber_str}${congress_n}_votematrix`).then(response => response.arrayBuffer());
 
-    Promise.all([rollcallsPromise, votesPromise, membersPromise]).then(values => congress_main(...values, congress_n, chamber));
+    Promise.all([membersPromise, rollcallsPromise, votesPromise]).then(values => congress_main(...values, congress_n, chamber));
 }
 
 function handle_resize(event) {
@@ -961,7 +942,7 @@ function handle_resize(event) {
 function main() {
     window.addEventListener("resize", handle_resize);
 
-    load_congress(119, HOUSE);
+    fetch_congress_run_main(119, HOUSE);
 
     // prevent double click from annoyingly selecting text
     document.addEventListener("mousedown", function(event) {
