@@ -36,7 +36,7 @@ const vote_codes = {
 
 const vote_colors = {
     yea: {
-        100: "#4000ff",
+        100: "#3214fd",
         200: "#ff0030",
         328: "#40ff00",
     },
@@ -47,9 +47,9 @@ const vote_colors = {
 
     },
     skip: {
-        100: "#888888",
-        200: "#888888",
-        328: "#888888",
+        100: "#999999",
+        200: "#999999",
+        328: "#999999",
     },
 };
 
@@ -175,8 +175,11 @@ function xy_in_rect(x, y, rect) {
 // Returns: sorted array of svg elements in the proper layout, but not assigned
 function chamber_seats(which_chamber, how_many) {
     let svg = document.querySelector("#chamber");
-    svg.setAttribute("viewBox", "0 0 800 450");
-    const svgWidth = 800;
+    const scale = svg.clientHeight / 450.0;
+    const vb_width = svg.clientWidth / scale;
+    console.log(svg.clientWidth, svg.clientHeight, vb_width, scale);
+    svg.setAttribute("viewBox", `0 0 ${vb_width} 450`);
+    const svgWidth = vb_width;
     const svgHeight = 450;
     let rows, c_r, d_r, r;
     if (which_chamber == HOUSE) {
@@ -335,7 +338,7 @@ function assign_seats(seat_groups, chamber_seats) {
 
 function init_chamber(which_chamber, rollcalls, votes, members) {
     let chamber = { which: which_chamber,
-                    rollcall: 2
+                    rollcall: 1
                 };
 
     let seat_groups;
@@ -450,17 +453,47 @@ function result_short(result) {
     return null;
 }
 
+function badge_text_color(hex) {
+    const r = parseInt(hex.slice(1,3), 16);
+    const g = parseInt(hex.slice(3,5), 16);
+    const b = parseInt(hex.slice(5,7), 16);
+    return (r*0.299 + g*0.587 + b*0.114) > 150 ? "black" : "white";
+}
+
+function update_chamber_rollcall_info(row) {
+    const box = document.getElementById("chamber-rollcall-info");
+    const trimmed_billnum = row[RC.bill_number].trim();
+    const d = new Date(row[RC.date]);
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const rc_date = `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`; //` + ' ' + now.getDate() + ' ' + now.getFullYear()); //Tuesday February 12 2013
+    const trimmed_desc = row[RC.vote_desc].trim();
+    const trimmed_dtl = row[RC.dtl_desc].trim();
+    const details = trimmed_desc ? trimmed_desc : (trimmed_dtl ? trimmed_dtl : "");
+
+    box.innerHTML = `<div style='color: #000; flex: 0 0 auto; margin-right: 10px;'>${rc_date} </div><div style='min-width: 0; margin-left: auto;'><div class='rc-desc'><span style='font-weight: 600;'>Vote ${row[RC.rollnumber]}. </span>`
+        + (trimmed_billnum ?  `<span style='font-weight: normal;'>${trimmed_billnum} </span>` : "")
+        + details
+        + ` <span style='font-style: italic;'>${row[RC.vote_question]}</span></div></div>`;
+}
+
 function update_label(rollcall, vote_cmp) {
     const count = document.querySelector("#vote-result");
     let result_str = result_short(rollcall[RC.vote_result]);
     result_str = result_str ? result_str : rollcall[RC.vote_result];
     let result = document.querySelector("#vote-result");
     result.innerHTML = result_str;
-    let yea_count = document.querySelector("#yea-count");
-    yea_count.innerHTML = rollcall[RC.yea_count];
-    let nay_count = document.querySelector("#nay-count");
-    nay_count.innerHTML = rollcall[RC.nay_count];
 
+    let yea_count = document.querySelector("#yea-count");
+    const yea_num = Number(rollcall[RC.yea_count]);
+    let maybe_colon = yea_num === 0 ? "" : ":";
+    yea_count.innerHTML = `Yea: ${yea_num}`;
+
+    let nay_count = document.querySelector("#nay-count");
+    const nay_num = Number(rollcall[RC.nay_count]);
+    maybe_colon = nay_num === 0 ? "" : ":";
+    nay_count.innerHTML = `Nay: ${nay_num}`;
+
+    const vote_types = ["yea", "nay"];
     const sides = [Object.entries(vote_cmp.yea), Object.entries(vote_cmp.nay)];
     // Breakdowns of the sides
     for (let i=0; i<2; i++) {
@@ -468,21 +501,27 @@ function update_label(rollcall, vote_cmp) {
         let text;
         if (good_guys.length) {
             good_guys.sort((e1, e2)=>(e2[1] - e1[1]));
-            text = "(";
+            let parts = [];
             let n_others = 0; // Unknown party, hence "Other"
             for (let j=0; j<good_guys.length; j++) {
                 let e = good_guys[j];
                 if (party_short[e[0]]) {
-                    text += party_short[e[0]] + ": " + e[1].toString() + ", ";
+                    const color = vote_colors[vote_types[i]][e[0]];
+                    const badge_color = badge_text_color(color);
+                    // const border = badge_color === "black" ? "border: 1px solid #404040;" : "";
+                    const border = "border: 1px solid #202020;"
+                    parts.push(`<span style="background-color:${color};color:${badge_color};border-radius:4px;${border}padding:0 5px">${party_short[e[0]]}: ${e[1]}</span>`);
                 } else {
                     n_others += e[1];
                 }
             }
-            if (!n_others) {
-                text = text.slice(0, -2) + ")";
-            } else {
-                text = text + "O: " + n_others.toString() + ")";
+            if (n_others) {
+                const color = vote_colors[vote_types[i]][328];
+                const badge_color = badge_text_color(color);
+                const border = "border: 1px solid #202020;"
+                parts.push(`<span style="background-color:${color};color:${badge_color};border-radius:4px;${border}padding:0 5px">O: ${n_others}</span>`);
             }
+            text =  "(" + parts.join(", ") + ")";
         } else {
             text = "";
         }
@@ -497,9 +536,17 @@ function update_label(rollcall, vote_cmp) {
 
     const n_not_voting = Object.entries(vote_cmp.skip).reduce((acc, e)=>acc+Number(e[1]), 0);
     const not_voting_label = document.querySelector("#not-voting-label");
-    not_voting_label.innerHTML = "Not Voting: " + n_not_voting;
+    not_voting_label.innerHTML = `<span style="background-color:#999999;color:black;border-radius:4px;border: 1px solid #202020;padding:0 5px">Not Voting: ${n_not_voting}</span>`;
 
     reposition_label();
+}
+
+function object_sum(obj) {
+    let res = 0;
+    for ([key, value] of Object.entries(obj)) {
+        res += value;
+    }
+    return res;
 }
 
 function load_rollcall(chamber, rollnum) {
@@ -552,6 +599,13 @@ function load_rollcall(chamber, rollnum) {
         }
     }
     const rc = chamber.rollcalls[rollnum-1];
+    if (object_sum(vote_cmp.yea) !== Number(rc[RC.yea_count])) {
+        console.log(`Yea count mismatch: ${object_sum(vote_cmp.yea)} vs ${Number(rc[RC.yea_count])}`);
+    }
+    if (object_sum(vote_cmp.nay) !== Number(rc[RC.nay_count])) {
+        console.log(`Nay count mismatch: ${object_sum(vote_cmp.nay)} vs ${Number(rc[RC.nay_count])}`);
+    }
+    update_chamber_rollcall_info(rc);
     update_label(rc, vote_cmp);
 }
 
@@ -590,17 +644,16 @@ function chamber_mousedown(event) {
 }
 
 function reposition_label() {
-    const all = document.querySelector("#vote-summary");
+    const summ = document.querySelector("#vote-summary");
     const normal_w = 800;
     const normal_size = 0.85;
     const rect = st.chamber_svg.getBoundingClientRect();
     const svg_w = rect.width;
     const svg_h = rect.height;
-    all.style.fontSize = (normal_size * (svg_w/normal_w)).toString() + "rem";
-    // XXX get the new width given updated fontSize
-    const w = all.clientWidth;
-    all.style.top = (0.80 * svg_h).toString() + "px";
-    all.style.left = (0.5 * svg_w - 0.5*w).toString() + "px";
+    summ.style.fontSize = (normal_size * (svg_w/normal_w)).toString() + "rem";
+    const w = summ.clientWidth;
+    summ.style.top = (0.77 * svg_h).toString() + "px";
+    summ.style.left = (0.5 * svg_w - 0.5*w).toString() + "px";
 }
 
 function resize_chamber() {
@@ -724,55 +777,75 @@ function rollcall_matches(row, query) {
     return search_text.toLowerCase().includes(query.toLowerCase());
 }
 
+function rollcall_list_entry_content(row) {
+    const trimmed_billnum = row[RC.bill_number].trim();
+    const rc_date = row[RC.date];
+    const trimmed_desc = row[RC.vote_desc].trim();
+    const trimmed_dtl = row[RC.dtl_desc].trim();
+    const details = trimmed_desc ? trimmed_desc : (trimmed_dtl ? trimmed_dtl : "");
+    const result_str = row[RC.vote_result] ? `: <span style='font-style: normal;'<span>${row[RC.vote_result]}</span>` : "";
+
+    return "<div style='flex: 0 0 auto; margin-right: 5px; display: flex; flex-direction: column; justify-content: center'>"
+        + `<div> ${row[RC.rollnumber].toString()}`
+        + (trimmed_billnum ?  ". <span style='color: black;'>" + trimmed_billnum + " </span></div>" : "</div>")
+        + `<div style='color: #666;grid-column: 1;grid-row: 2;'>${rc_date}</div>`
+        + "</div><div class='rc-info' style='flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; align-items: center;'>"
+        + `<div>${details}</div>`
+        + `<div style='color: #666666;'>${row[RC.vote_question]}${result_str}</div>`
+        + "</div>";
+}
+
 function rollcall_table(rollcalls, which_chamber, query) {
     const chamber_str = which_chamber === HOUSE ? "House" : "Senate";
     const tbl = document.querySelector("#rollcalls");
+    tbl.addEventListener("click", rollcall_table_clicked);
     tbl.innerHTML = "";
     for (let i=0; i<rollcalls.length; i++) {
         let row = rollcalls[i];
         if (row[RC.chamber]===chamber_str && rollcall_matches(row, query)) {
-            let tr = tbl.appendChild(document.createElement("tr"));
+            // let tr = tbl.appendChild(document.createElement("tr"));
             // var td = tr.appendChild(document.createElement("td"));
-            let button = tr.appendChild(document.createElement("div"));
+            let button = tbl.appendChild(document.createElement("div"));
             button.style.width = "100%";
-            button.setAttribute("class", "vote-button");
+            button.className = "vote-button";
             button.setAttribute("vote-number", row[RC.rollnumber].toString());
-            button.addEventListener("click", rollcall_clicked);
-            const trimmed_billnum = row[RC.bill_number].trim();
-            const trimmed_desc = row[RC.vote_desc].trim();
-            const trimmed_dtl = row[RC.dtl_desc].trim();
-            button.innerHTML = row[RC.rollnumber].toString() + ". "
-                               + (trimmed_billnum ?  "<span style='color: black;'>" + trimmed_billnum + "</span><br>" : "")
-                               + (trimmed_desc.length ? trimmed_desc + "<br>" : (trimmed_dtl ? trimmed_dtl + "<br>" : "") )
-                               + " <span style='color: #666666;'>" + row[RC.vote_question] + "</span>";
+            button.innerHTML = rollcall_list_entry_content(row);
         }
     }
 }
 
 function expand_button(button, vote_n) {
+    button.classList.add("active");
     var h = button.clientHeight;
+    // button.style.height = (h + 30).toString() + "px";
+    /*
     button.parentElement.style.borderWidth = "2px";
     button.parentElement.style.borderColor = "#888888";
-    button.style.height = (h + 30).toString() + "px";
     button.style.backgroundColor = "#ffffff";
+    */
     button.style.userSelect = "auto";
     // const table = document.querySelector("#rollcalls");
     // table.scrollTo(0, button.offsetTop);
     const row = st.chamber.rollcalls[vote_n - 1];
-    const voteview = document.createElement("a");
+    const voteview = document.createElement("div");
+    voteview.style.marginTop = "5px";
+    const voteview_link = document.createElement("a");
+    voteview.appendChild(voteview_link);
     const vote_code = "R"
                       + (st.chamber.which===HOUSE ? "H"  : "S")
                       + ("00" + st.congress_selector.value).slice(-3)
                       + ("000" + row[2]).slice(-4);
     const url = "https://voteview.com/rollcall/" + vote_code;
-    voteview.setAttribute("href", url);
-    voteview.setAttribute("target", "_blank");
-    voteview.setAttribute("class", "voteview-link");
-    voteview.innerHTML = "voteview>";
-    button.appendChild(voteview);
+    voteview_link.setAttribute("href", url);
+    voteview_link.setAttribute("target", "_blank");
+    voteview_link.setAttribute("class", "voteview-link");
+    voteview_link.innerHTML = "voteview>";
+    info_column = button.querySelector(".rc-info");
+    info_column.appendChild(voteview);
 }
 
 function unexpand_button(button) {
+    button.classList.remove("active");
     button.parentElement.style.borderWidth = "";
     button.parentElement.style.borderColor = "";
     button.style.height = "";
@@ -780,17 +853,10 @@ function unexpand_button(button) {
     button.style.userSelect = "";
     const vote_n = Number(button.getAttribute("vote-number"));
     const row = st.chamber.rollcalls[vote_n - 1];
-    const trimmed_billnum = row[RC.bill_number].trim();
-    const trimmed_desc = row[RC.vote_desc].trim();
-    const trimmed_dtl = row[RC.dtl_desc].trim();
-    button.innerHTML = row[RC.rollnumber].toString() + ". "
-                       + (trimmed_billnum ?  "<span style='color: black;'>" + trimmed_billnum + "</span><br>" : "")
-                       + (trimmed_desc.length ? trimmed_desc + "<br>" : (trimmed_dtl ? trimmed_dtl + "<br>" : "") )
-                       + " <span style='color: #666666;'>" + row[RC.vote_question] + "</span>";
+    button.innerHTML = rollcall_list_entry_content(row);
 }
 
-function rollcall_clicked(event) {
-    const button = event.currentTarget;
+function rollcall_clicked(button) {
     if (st.cur_button === button) {
         return;
     }
@@ -803,6 +869,12 @@ function rollcall_clicked(event) {
     st.cur_button = button;
     load_rollcall(st.chamber, vote_n);
     expand_button(button, vote_n);
+}
+
+function rollcall_table_clicked(event) {
+    const button = event.target.closest(".vote-button");
+    if (button)
+        rollcall_clicked(button);
 }
 
 /************************************** Selections/main *******************************************/
@@ -914,16 +986,21 @@ function handle_resize(event) {
     const rollcalls_box = document.getElementById("rollcalls-box");
     const w2 = 1720;
     const w1 = 1300;
-    const chamber_p = .62;
-    const rollcalls_p = .20;
+    // e.g. 76vw -> .76
+    const chamber_p = .70;
+    const rollcalls_p = .26;
+    console.log(chamber_p, rollcalls_p);
     const both_p = chamber_p + rollcalls_p;
     const padding_p = 1 - chamber_p - rollcalls_p;
     const gap = 10;
     const wprime = window.innerWidth - gap;
     if (wprime > w2) {
         // full padding above w2
-        chamber_box.style.width = "64vw";
-        rollcalls_box.style.width = "18vw";
+        const padding = padding_p * window.innerWidth;
+        const chamber_w = (wprime - padding) * (chamber_p / both_p);
+        chamber_box.style.width = Math.round(chamber_w).toString() + "px";
+        const rollcalls_w = (wprime - padding) * (rollcalls_p / both_p);
+        rollcalls_box.style.width = Math.round(rollcalls_w).toString() + "px";
     } else if (wprime > w1) {
         // padding scales down between w2 and w1
         const padding = ((wprime - w1) / (w2 - w1)) * padding_p * window.innerWidth;

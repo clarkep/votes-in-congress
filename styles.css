@@ -6,6 +6,7 @@ html, body {
     overflow-y: hidden;
     font-family: "Times New Roman", "serif";
     box-sizing: border-box;
+    background-color: #ffffff;
 }
 
 header {
@@ -33,8 +34,9 @@ header {
 
 #chamber-box {
   position: relative;
-  width: 62vw;
+  width: 70vw;
   height: 36vw;
+  background-color: #ffffff;
 /*
   min-width: 800px;
   min-height: 450px;
@@ -60,7 +62,7 @@ header {
   position: absolute;
   height: 25px;
   top: -26px;
-  right: -2px;
+  right: 0px;
 }
 
 #search-members-input {
@@ -128,11 +130,33 @@ header {
   position: absolute;
   width: 100%;
   height: 100%;
+  box-sizing: border-box;
   border: 2px solid rgb(140 140 140);
 }
 
-#legend {
+#chamber-rollcall-info {
   position: absolute;
+  left: 0px;
+  top: 0px;
+  width: calc(100% - 8px);
+  height: 12%;
+  max-height: 12%;
+  margin-left: 4px;
+  margin-right: 4px;
+  margin-top: 6px;
+  font-family: serif;
+  font-size: 1.1rem;
+  overflow: hidden;
+  display: flex;
+  flex-direction: row;
+  /* text-align: right; */
+}
+
+#chamber-rollcall-info .rc-desc {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
 }
 
 /*
@@ -150,10 +174,14 @@ header {
 
 #vote-summary {
   position: absolute;
-  top: 350px;
+  top: 77%;
   left: 300px;
   text-align: center;
   font-size: 0.9rem;
+  padding: 3px 3px;
+  background-color: #ffffffd0;
+  /* border: 1px solid black; */
+  border-radius: 25px;
 }
 
 #vote-result {
@@ -194,7 +222,7 @@ header {
   min-height: 450px;
 */
   /* reset by handle_resize: this is the value for large widths  */
-  width: 20vw;
+  width: 26vw;
   height: 36vw;
 
 }
@@ -229,22 +257,40 @@ header {
   text-align: center;
   /* extra right padding for scrollbar */
   padding: 2px 15px 2px 5px;
-  border: 0px;
+  border-bottom: 1px solid black;
   width: 100%;
   user-select: none;
   position: relative;
+/*  display: grid;
+  grid-template-columns: auto 3fr;
+  grid-template-rows: auto auto auto;
+*/
+  display: flex;
+  flex-direction: row;
+}
+
+.vote-button.active {
+/*  border: 2px solid black;*/
+  background-color: #f2f2f2;
+  border-left: 2px solid #666;
 }
 
 .voteview-link {
+  /*
   position: absolute;
   top: calc(100% - 20px);
   left: calc(50% - 30px);
+  */
   text-decoration: underline;
   color: #000000;
 }
 
 .vote-button:active {
   background-color: #dddddd;
+}
+
+.vote-button:hover:not(.active) {
+  background-color: #f6f6f6;
 }
 
 #search-rollcalls {
